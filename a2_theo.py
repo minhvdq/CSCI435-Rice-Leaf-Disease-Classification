@@ -48,7 +48,7 @@ def pre_processing(): #Pre-process dataset as needed.
         for disease in (os.listdir(os.path.join(path, background))):
 
             if count_d>=4:
-                count_d = 0
+                count_d = -1
 
             count_d = count_d + 1
             print('Disease:', count_d)
@@ -63,31 +63,28 @@ def pre_processing(): #Pre-process dataset as needed.
                 labels.append((count_d))
 
 
-    images = np.array(images)
-    labels = np.array(labels)
+    img_data= np.array(images)
+    label_data = np.array(labels)
 
-    return images, labels
+    img_tensor = torch.from_numpy(img_data).permute(0, 3, 1, 2).float() / 255.0
+    label_tensor = torch.from_numpy(label_data)
+    dataset = TensorDataset(img_tensor,label_tensor)
+
+    generator1 = torch.Generator().manual_seed(42)
+    train_data, test_data = torch.utils.data.random_split(dataset, [0.8, 0.2], generator1)
+    torch.save(train_data, "train_dataset.pth")
+    torch.save(test_data, "test_dataset.pth")
+
 
 def feature_extraction(dataset_path):
     data = []
 
     return data
 
-def train_cnn(images, labels):#Take in the hyperparameters as well as dataset path. Setup CNN structure and train.
+def train_cnn(train_loader):#Take in the hyperparameters as well as dataset path. Setup CNN structure and train.
     device = "cuda" if torch.cuda.is_available() else "cpu"
     net = Net().to(device)
     num_epochs = 10
-
-    img_data = images
-    label_data = labels
-    img_tensor = torch.from_numpy(images).permute(0, 3, 1, 2).float() / 255.0
-    label_tensor = torch.from_numpy(label_data)
-    dataset = TensorDataset(img_tensor,label_tensor)
-
-    generator1 = torch.Generator().manual_seed(42)
-    train_data, test_data = torch.utils.data.random_split(dataset, [0.8, 0.2], generator1)
-    train_loader = torch.utils.data.DataLoader(train_data, batch_size=32, shuffle=True)
-    test_loader = torch.utils.data.DataLoader(train_data, batch_size=32, shuffle=True)
 
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(net.parameters(), lr=0.01)
@@ -115,6 +112,31 @@ def train_cnn(images, labels):#Take in the hyperparameters as well as dataset pa
 
     return
 
+def run_cnn(test_loader):
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    net = Net().to(device)
+    net.load_state_dict(torch.load('cnn_model.pth', map_location=device))
+    net.eval()
+
+    correct = 0
+    total = 0
+
+    with torch.no_grad():
+        for images, labels in test_loader:
+            images = images.to(device)
+            labels = labels.to(device)
+
+            outputs = net(images)
+            _, predicted = torch.max(outputs, 1)
+
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+
+    accuracy = 100 * correct / total
+    print(f'Test Accuracy: {accuracy:.2f}%')
+
 def hyperparam_randomSearch(): #Randomsearch over hyperparameters
     return
 
@@ -129,16 +151,35 @@ def main():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
+        "-p",
+        action="store_true",
+        help="Create test train split datasets"
+    )
+    parser.add_argument(
         "-f",
         action="store_true",
         help="Run training"
     )
+    parser.add_argument(
+        "-r",
+        action="store_true",
+        help="Run testing"
+    )
 
     args = parser.parse_args()
 
+    if args.p:
+        pre_processing()
+
     if args.f:
-        images, labels = pre_processing()
-        train_cnn(images, labels)
+        train_data = torch.load("train_dataset.pth", weights_only=False)
+        train_loader = torch.utils.data.DataLoader(train_data, batch_size=32, shuffle=True)
+        train_cnn(train_loader)
+
+    if args.r:
+        test_data = torch.load("test_dataset.pth", weights_only=False)
+        test_loader = torch.utils.data.DataLoader(test_data, batch_size=32, shuffle=True)
+        run_cnn(test_loader)
 
 
 
