@@ -1,0 +1,9 @@
+numpy
+pandas
+torch
+tqdm
+torchvision
+torchmetrics
+matplotlib
+opencv-python
+scikit-optimize
