@@ -12,15 +12,11 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from torchmetrics.classification import Accuracy, Precision, Recall
 
-
-# !pip install torchvision
 import torchvision
-
 import torch.nn.functional as F
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
 
-# !pip install torchmetrics
 import torchmetrics
 
 import cv2 as cv
@@ -29,15 +25,13 @@ import skopt
 from skopt.space import Real, Integer, Categorical
 from skopt import gp_minimize
 
+# --- Global Constants (Kept the same) ---
 num_classes = 5
-batch_size = 60
+batch_size = 60 # Note: This is overridden by the BO process
 
 labels = ['Brown Spot', 'Leaf Scaled', 'Rice Blast', 'Rice Turgor', 'Sheath Blight']
 
 data_root = "./Dhan-Shomadhan"
-
-# IMG_WIDTH = 200
-# IMG_HEIGHT = 100
 
 IMG_WIDTH = 256
 IMG_HEIGHT = 256
@@ -45,7 +39,24 @@ IMG_HEIGHT = 256
 MODEL_SAVE_PATH = 'cnn_model_state.pt'
 OPTIMIZED_HPS_PATH = 'optimized_hps.pkl'
 
+# You could calculate your dataset's specific mean/std for better results.
+MEAN = [0.485, 0.456, 0.406] 
+STD = [0.229, 0.224, 0.225]
 
+train_transforms = transforms.Compose([
+    transforms.ToTensor(),             # Converts image to tensor and scales to [0, 1]
+    transforms.RandomHorizontalFlip(p=0.5), # Augmentation 1: Random flip
+    transforms.RandomRotation(degrees=15),  # Augmentation 2: Small random rotation
+    transforms.ColorJitter(brightness=0.1, contrast=0.1), # Augmentation 3: Minor color variation
+    transforms.Normalize(MEAN, STD)    
+])
+
+test_val_transforms = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize(MEAN, STD)   
+])
+
+# --- CustomImageDataset (Updated with BGR-to-RGB fix) ---
 class CustomImageDataset(Dataset):
     def __init__(self, file_paths, targets, transform=None):
         self.file_paths = file_paths
@@ -62,9 +73,10 @@ class CustomImageDataset(Dataset):
         
         # Check if image was loaded correctly
         if image is None:
-            # Handle error (e.g., return a black image or skip, depending on your error handling policy)
             print(f"Warning: Could not load image {img_path}. Returning zero tensor.")
             return torch.zeros(3, IMG_HEIGHT, IMG_WIDTH, dtype=torch.float32), self.targets[index]
+
+        image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
 
         # 2. Apply preprocessing (Rotation and Resizing from your original logic)
         img_h, img_w, _ = image.shape
@@ -73,7 +85,6 @@ class CustomImageDataset(Dataset):
         if img_h > img_w:
             image = cv.rotate(image, cv.ROTATE_90_CLOCKWISE)
 
-        # Resizing (using INTER_AREA for downsampling optimization)
         if image.shape[0] != IMG_HEIGHT or image.shape[1] != IMG_WIDTH:
             image = cv.resize(image, (IMG_WIDTH, IMG_HEIGHT), interpolation=cv.INTER_AREA)
 
@@ -81,18 +92,16 @@ class CustomImageDataset(Dataset):
         if self.transform:
             image = self.transform(image)
         
-        # PyTorch generally expects C x H x W format and float type (0.0 - 1.0)
-        # Assuming transform (like torchvision.transforms.ToTensor) handles this.
-
         target = self.targets[index]
         return image, target
 
+# --- EarlyStopper (Kept the same) ---
 class EarlyStopper:
     def __init__(self, patience=5, min_delta=0.0):
         self.patience = patience
         self.min_delta = min_delta
         self.counter = 0
-        self.best_loss = None  # Corrected typo and initialized to None
+        self.best_loss = None
         self.early_stop = False
 
     def __call__(self, val_loss):
@@ -112,6 +121,7 @@ class EarlyStopper:
                 return True
             return False
 
+# --- Helper Functions (Kept the same) ---
 def imshow(img):
     npimg = img.numpy()
     plt.imshow(np.transpose(npimg, (1, 2, 0)))
@@ -161,11 +171,7 @@ def split_data(root_path, train_ratio=0.75, val_ratio=0.15):
             labels_t.append(all_labels[index])
     return data_tr, data_val, data_t, labels_tr, labels_val, labels_t
 
-
-'''
-    activation functions can be reLu, Sigmoid, or Tanh.
-'''
-
+# --- CNN Model (Kept the same) ---
 class CNN(nn.Module):
     def __init__(self, neurons, in_channels, activation_fn_str, layers1, layers2, kernel_size_1, kernel_size_2, dropout_rate, normalization, num_classes, img_h, img_w):
         super(CNN, self).__init__()
@@ -186,8 +192,9 @@ class CNN(nn.Module):
         
         # Block 1 (Repeated Conv-Pool)
         layers_1_list = []
+        cur_channel = neurons
         for _ in range(layers1):
-            layers_1_list.append(nn.Conv2d(neurons, neurons, kernel_size=kernel_size_1, padding='same')) # Use 'same' for simplicity
+            layers_1_list.append(nn.Conv2d(cur_channel, cur_channel, kernel_size=kernel_size_1, padding='same')) # Use 'same' for simplicity
             layers_1_list.append(self.activation)
             layers_1_list.append(nn.MaxPool2d(kernel_size=2, stride=2))
         self.block1 = nn.Sequential(*layers_1_list)
@@ -197,7 +204,7 @@ class CNN(nn.Module):
         if dropout_rate > 0:
             layers_2_list.append(nn.Dropout2d(p=dropout_rate))
 
-        cur_channel = neurons
+        # cur_channel remains the same from block1's last output
         for _ in range(layers2):
             layers_2_list.append(nn.Conv2d(cur_channel, cur_channel * 2, kernel_size=kernel_size_2, padding='same')) # Double filters for deeper layers
             layers_2_list.append(self.activation)
@@ -226,6 +233,7 @@ class CNN(nn.Module):
         x = self.fc1(x)
         return x
 
+# --- train_and_evaluate (Kept the same) ---
 def train_and_evaluate(hyperparameters, train_loader, val_loader, device):
     neurons, activation_str, layers1, layers2, kernel_size, dropout_rate, normalization, lr, batch_size, num_epochs = hyperparameters
 
@@ -292,20 +300,15 @@ def train_and_evaluate(hyperparameters, train_loader, val_loader, device):
     
     return -best_val_accuracy
 
+# --- cnn_objective (Updated to use new transforms) ---
 def cnn_objective(hyperparameters):
-    # f1_channels, f2_channels, kernel_size_1, kernel_size_2, activation_str, lr, batch_size, num_epochs = hyperparameters
-
-    early_stopper = EarlyStopper(patience=5, min_delta=0.001)
-    best_val_accuracy = -np.inf
 
     np.random.seed(42)
 
     data_tr, data_val, _, labels_tr, labels_val, _ = split_data(data_root, train_ratio=0.65, val_ratio=0.15)
 
-    # Load data
-    transform = transforms.ToTensor()
-    train_loader = DataLoader(CustomImageDataset(data_tr, labels_tr, transform=transforms.ToTensor()), batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(CustomImageDataset(data_val, labels_val, transform=transforms.ToTensor()), batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(CustomImageDataset(data_tr, labels_tr, transform=train_transforms), batch_size=int(hyperparameters[8]), shuffle=True)
+    val_loader = DataLoader(CustomImageDataset(data_val, labels_val, transform=test_val_transforms), batch_size=int(hyperparameters[8]), shuffle=False)
 
     # set up for training
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -314,26 +317,19 @@ def cnn_objective(hyperparameters):
         if device == "cuda":
             return train_and_evaluate(hyperparameters, train_loader, val_loader, device)
         else:
-            # Skip the try block if CUDA is not available at all
             raise RuntimeError("CUDA is not available, forcing CPU run.")
     
     except RuntimeError as e:
-        # Catch any RuntimeError (which includes CUDA/CUBLAS/OOM/Max-Pool errors)
-        # If the error is likely GPU-related, switch to CPU.
         print("\n" + "="*80)
         print(f"!!! WARNING: GPU-related RuntimeError encountered: {e}")
         print("!!! Switching to CPU and rerunning training attempt...")
         print("="*80 + "\n")
         
-        # Attempt 2: Rerun on CPU
         device = "cpu"
-        # Clear CUDA cache just in case the error was OOM before switching
         if torch.cuda.is_available():
             torch.cuda.empty_cache() 
         
-        # We re-raise the exception if the model fails again on CPU (unlikely)
         return train_and_evaluate(hyperparameters, train_loader, val_loader, device)
-
 
 space = [
     Integer(10, 100, name='neurons'),
@@ -341,7 +337,6 @@ space = [
     Integer(1, 3, name='layers1'),
     Integer(1, 3, name='layers2'),
     Integer(3, 5, name='kernel_size'),
-    # Integer(3, 5, name='kernel_size_2'),
     Real(0, 0.5, name='dropout_rate'),
     Categorical([0, 1], name='normalization'),
     Real(1e-5, 1e-2, 'log-uniform', name='lr'),
@@ -354,7 +349,6 @@ def final_test_run(hyperparameters, run_seed):
     # 1. Setup Seeds and Hyperparameters
     np.random.seed(run_seed)
     torch.manual_seed(run_seed)
-    # Ensure filters, batch_size, and epochs are integers
     neurons, activation_str, layers1, layers2, kernel_size, dropout_rate, normalization, lr, batch_size, num_epochs = hyperparameters
 
     batch_size = int(batch_size)
@@ -365,45 +359,39 @@ def final_test_run(hyperparameters, run_seed):
     kernel_size = int(kernel_size)
     
     # 2. Data Split (New split for each run)
-    # Ratio: 70% Train, 15% Val, 15% Test. Train and Val are combined for final training.
     data_tr, data_val, data_t, labels_tr, labels_val, labels_t = split_data(
         data_root, train_ratio=0.65, val_ratio=0.15 
     )
+
     # Combine Train and Val for the final, full training set
     data_tr_final = data_tr + data_val
     labels_tr_final = labels_tr + labels_val
 
-    transform = transforms.ToTensor()
-    train_loader = DataLoader(CustomImageDataset(data_tr_final, labels_tr_final, transform=transform), batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(CustomImageDataset(data_t, labels_t, transform=transform), batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(CustomImageDataset(data_tr_final, labels_tr_final, transform=train_transforms), batch_size=batch_size, shuffle=True)
+    test_loader = DataLoader(CustomImageDataset(data_t, labels_t, transform=test_val_transforms), batch_size=batch_size, shuffle=False)
     
-    # 3. Model Setup
+    # 3. Model Setup (Kept the same)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     try:
         if device == "cuda":
             model = CNN(neurons=neurons, in_channels=3, activation_fn_str=activation_str, layers1=layers1, layers2=layers2, kernel_size_1=kernel_size, kernel_size_2=kernel_size, dropout_rate=dropout_rate, normalization=normalization, num_classes=num_classes, img_h=IMG_HEIGHT, img_w=IMG_WIDTH).to(device)
             print(f"Model initialized on {device}")
         else:
-            # Skip the try block if CUDA is not available at all
             raise RuntimeError("CUDA is not available, forcing CPU run.")
     except RuntimeError as e:
-        # Catch any RuntimeError (which includes CUDA/CUBLAS/OOM/Max-Pool errors)
-        # If the error is likely GPU-related, switch to CPU.
         print("\n" + "="*80)
         print(f"!!! WARNING: GPU-related RuntimeError encountered: {e}")
         print("!!! Switching to CPU and rerunning training attempt...")
         print("="*80 + "\n")
         
-        # Attempt 2: Rerun on CPU
         device = "cpu"
-        # Clear CUDA cache just in case the error was OOM before switching
         if torch.cuda.is_available():
             torch.cuda.empty_cache() 
         
-        # We re-raise the exception if the model fails again on CPU (unlikely)
-        return train_and_evaluate(hyperparameters, train_loader, val_loader, device)
+        model = CNN(neurons=neurons, in_channels=3, activation_fn_str=activation_str, layers1=layers1, layers2=layers2, kernel_size_1=kernel_size, kernel_size_2=kernel_size, dropout_rate=dropout_rate, normalization=normalization, num_classes=num_classes, img_h=IMG_HEIGHT, img_w=IMG_WIDTH).to(device)
+        print(f"Model initialized on {device}")
 
-    # 4. Training (on Train + Val data)
+
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
     
@@ -418,7 +406,6 @@ def final_test_run(hyperparameters, run_seed):
             loss.backward()
             optimizer.step()
 
-    # 5. Evaluation on Test Set
     acc_metric = Accuracy(task="multiclass", num_classes=num_classes).to(device)
     prec_metric = Precision(task="multiclass", num_classes=num_classes, average='macro').to(device)
     rec_metric = Recall(task="multiclass", num_classes=num_classes, average='macro').to(device)
@@ -443,18 +430,18 @@ def final_test_run(hyperparameters, run_seed):
 
 def baye():
     res_gp = None
-    if os.path.exists(OPTMIZED_HPS_PATH):
+    if os.path.exists(OPTIMIZED_HPS_PATH):
         print(f"Loading optimized hyperparameters from {OPTIMIZED_HPS_PATH}")
         with open(OPTIMIZED_HPS_PATH, 'rb') as f:
             res_gp = skopt.load(f)
     else:
         print("Running Bayesian Optimization...")
         res_gp = gp_minimize(
-            cnn_objective,   # Function to minimize (returns -Validation Accuracy)
-            space,           # Hyperparameter search space
-            n_calls=30,      # Total number of function evaluations (e.g., 30 experiments)
-            n_random_starts=10, # Number of random points to start with
-            random_state=42  # Seed for reproducibility of the BO process
+            cnn_objective,   
+            space,           
+            n_calls=30,      
+            n_random_starts=10, 
+            random_state=42
         )
         skopt.dump(res_gp, OPTIMIZED_HPS_PATH)
         print(f"Optimization results saved to {OPTIMIZED_HPS_PATH}")
@@ -463,8 +450,6 @@ def baye():
 
         print(f"Best hyperparameters is {best_hps}")
     
-
-
 def train():
 
     res_gp = None
@@ -485,7 +470,6 @@ def train():
         print(f"Optimization results saved to {OPTIMIZED_HPS_PATH}")
     
 
-
     best_hps = res_gp.x
     best_validation_score = -res_gp.fun
 
@@ -499,7 +483,6 @@ def train():
     # Execute 5 runs
     for i, seed in enumerate(seeds):
         print(f"--- Running Test {i+1}/5 with seed {seed} ---")
-        # This will train a new model from scratch and generate a new random data split
         acc, prec, rec = final_test_run(best_hps, seed)
         results.append((acc, prec, rec))
         print(f"Results: Acc={acc:.4f}, Prec={prec:.4f}, Rec={rec:.4f}")
@@ -523,20 +506,4 @@ def train():
     print("=" * 50)
 
 if __name__ == "__main__":
-    # parser = argparse.ArgumentParser(description='Assignemnt 2')
-    # parser.add_argument(
-    #     "-t", "--train",
-    #     help='Train'
-    # )
-    # parser.add_argument(
-    #     "-b", "--baye",
-    #     help='Bayesian'
-    # )
-
-    # args = parser.parse_args()
-    # if args.train:
-    #     train()
-    # if args.baye:
-    #     baye()
-
     train()
