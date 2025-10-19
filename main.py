@@ -475,12 +475,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Assignemnt 2')
     parser.add_argument(
         "-t", "--train",
-        nargs=0,
         help='Train'
     )
     parser.add_argument(
         "-b", "--baye",
-        nargs=0,
         help='Bayesian'
     )
 
