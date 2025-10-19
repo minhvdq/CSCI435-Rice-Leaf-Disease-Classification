@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 import os
+import argparse
 
 import torch
 from torch import optim
@@ -35,14 +36,15 @@ labels = ['Brown Spot', 'Leaf Scaled', 'Rice Blast', 'Rice Turgor', 'Sheath Blig
 
 data_root = "./Dhan-Shomadhan"
 
-IMG_WIDTH = 200
-IMG_HEIGHT = 100
+# IMG_WIDTH = 200
+# IMG_HEIGHT = 100
+
+IMG_WIDTH = 512
+IMG_HEIGHT = 512
 
 MODEL_SAVE_PATH = 'cnn_model_state.pt'
 OPTIMIZED_HPS_PATH = 'optimized_hps.pkl'
 
-# IMG_WIDTH = 200
-# IMG_HEIGHT = 100
 
 class CustomImageDataset(Dataset):
     def __init__(self, file_paths, targets, transform=None):
@@ -84,6 +86,31 @@ class CustomImageDataset(Dataset):
 
         target = self.targets[index]
         return image, target
+
+class EarlyStopper:
+    def __init__(self, patience=5, min_delta=0.0):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.counter = 0
+        self.best_loss = None  # Corrected typo and initialized to None
+        self.early_stop = False
+
+    def __call__(self, val_loss):
+        if self.best_loss is None:
+            self.best_loss = val_loss
+            return False
+        
+        if val_loss < self.best_loss - self.min_delta:
+            self.best_loss = val_loss
+            self.counter = 0  
+            return False
+        
+        else:
+            self.counter += 1
+            if self.counter >= self.patience:
+                self.early_stop = True
+                return True
+            return False
 
 def imshow(img):
     npimg = img.numpy()
@@ -140,51 +167,79 @@ def split_data(root_path, train_ratio=0.75, val_ratio=0.15):
 '''
 
 class CNN(nn.Module):
-   def __init__(self, in_channels, activation_fn_str, f1_channels, f2_channels, num_classes):
+    def __init__(self, neurons, in_channels, activation_fn_str, layers1, layers2, kernel_size_1, kernel_size_2, dropout_rate, normalization, num_classes, img_h, img_w):
+        super(CNN, self).__init__()
+        
+        # Helper to select activation function
+        if activation_fn_str == 'relu': self.activation = nn.ReLU()
+        elif activation_fn_str == 'sigmoid': self.activation = nn.Sigmoid()
+        elif activation_fn_str == 'tanh': self.activation = nn.Tanh()
+        else: self.activation = nn.ReLU()
 
-       """
-       Building blocks of convolutional neural network.
+        # Initial Block: Input Channels -> Neurons
+        self.initial_block = nn.Sequential(
+            nn.Conv2d(in_channels, neurons, kernel_size=kernel_size_1, padding=1),
+            nn.BatchNorm2d(neurons) if normalization == 1 else nn.Identity(),
+            self.activation,
+            nn.MaxPool2d(kernel_size=2, stride=2)
+        )
+        
+        # Block 1 (Repeated Conv-Pool)
+        layers_1_list = []
+        for _ in range(layers1):
+            layers_1_list.append(nn.Conv2d(neurons, neurons, kernel_size=kernel_size_1, padding='same')) # Use 'same' for simplicity
+            layers_1_list.append(self.activation)
+            layers_1_list.append(nn.MaxPool2d(kernel_size=2, stride=2))
+        self.block1 = nn.Sequential(*layers_1_list)
+        
+        # Block 2 (Repeated Conv-Pool) - Use different kernel size if desired
+        layers_2_list = []
+        if dropout_rate > 0:
+            layers_2_list.append(nn.Dropout2d(p=dropout_rate))
+        for _ in range(layers2):
+            layers_2_list.append(nn.Conv2d(neurons, neurons*2, kernel_size=kernel_size_2, padding='same')) # Double filters for deeper layers
+            layers_2_list.append(self.activation)
+            layers_2_list.append(nn.MaxPool2d(kernel_size=2, stride=2))
+        self.block2 = nn.Sequential(*layers_2_list)
+        
+        # Calculate the size of the final flattened layer
+        # Assuming all pooling layers are 2x2 with stride 2
+        # Total pooling steps: 1 (initial) + layers1 + layers2
+        final_h = img_h // (2**(1 + layers1 + layers2))
+        final_w = img_w // (2**(1 + layers1 + layers2))
+        
+        # The number of output channels from the last layer of block2
+        final_channels = neurons * 2 # Since we doubled channels in block2
 
-       Parameters:
-           * in_channels: Number of channels in the input image (for grayscale images, 1)
-           * num_classes: Number of classes to predict. In our problem, 10 (i.e digits from  0 to 9).
-       """
-       super(CNN, self).__init__()
+        # Check for invalid image size (too small for many pooling layers)
+        if final_h < 1 or final_w < 1:
+            raise ValueError(f"Image size {img_h}x{img_w} is too small for {1 + layers1 + layers2} pooling layers.")
 
-       # 1st convolutional layer
-       self.conv1 = nn.Conv2d(in_channels=in_channels, out_channels=f1_channels, kernel_size=3, padding=1)
-       # Max pooling layer
-       self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
-       # 2nd convolutional layer
-       self.conv2 = nn.Conv2d(in_channels=f1_channels, out_channels=f2_channels, kernel_size=3, padding=1)
-       # Fully connected layer
-       self.fc1 = nn.Linear(f2_channels * int(IMG_HEIGHT / 4) * int(IMG_WIDTH / 4), num_classes)
+        self.fc_input_size = final_channels * final_h * final_w
+        self.fc1 = nn.Linear(self.fc_input_size, num_classes) # Simplified to direct classification
 
-       if activation_fn_str == 'relu':
-           self.activation_fn = nn.ReLU()
-       elif activation_fn_str == 'sigmoid':
-           self.activation_fn = nn.Sigmoid()
-       elif activation_fn_str == 'tanh':
-           self.activation_fn = nn.Tanh()
-       else:
-           self.activation_fn = nn.ReLU()
-
-   def forward(self, x):
-        x = self.activation_fn(self.conv1(x))
-        x = self.pool(x)
-        x = self.activation_fn(self.conv2(x))
-        x = self.pool(x)
+    def forward(self, x):
+        x = self.initial_block(x)
+        x = self.block1(x)
+        x = self.block2(x)
+        
         x = x.reshape(x.shape[0], -1)
         x = self.fc1(x)
         return x
 
 def cnn_objective(hyperparameters):
-    f1_channels, f2_channels, activation_str, lr, batch_size, num_epochs = hyperparameters
+    # f1_channels, f2_channels, kernel_size_1, kernel_size_2, activation_str, lr, batch_size, num_epochs = hyperparameters
+    neurons, activation_str, layers1, layers2, kernel_size, dropout_rate, normalization, lr, batch_size, num_epochs = hyperparameters
 
     batch_size = int(batch_size)
     num_epochs = int(num_epochs)
-    f1_channels = int(f1_channels)
-    f2_channels = int(f2_channels)
+    layers1 = int(layers1)
+    layers2 = int(layers2)
+    neurons = int(neurons)
+    kernel_size = int(kernel_size)
+
+    early_stopper = EarlyStopper(patience=5, min_delta=0.001)
+    best_val_accuracy = -np.inf
 
     np.random.seed(42)
 
@@ -197,7 +252,7 @@ def cnn_objective(hyperparameters):
 
     # set up for training
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = CNN(in_channels=3, activation_fn_str=activation_str, f1_channels=f1_channels, f2_channels=f2_channels, num_classes=num_classes).to(device)
+    model = CNN(neurons=neurons, in_channels=3, activation_fn_str=activation_str, layers1=layers1, layers2=layers2, kernel_size_1=kernel_size, kernel_size_2=kernel_size, dropout_rate=dropout_rate, normalization=normalization, num_classes=num_classes, img_h=IMG_HEIGHT, img_w=IMG_WIDTH).to(device)
     print(model)
 
     criterion = nn.CrossEntropyLoss()
@@ -216,26 +271,51 @@ def cnn_objective(hyperparameters):
             loss.backward()
             optimizer.step()
 
-    # Evaluation
-    model.eval()
-    with torch.no_grad():
-        for images, labels in val_loader:
-            images = images.to(device)
-            labels = labels.to(device)
-            outputs = model(images)
-            _, preds = torch.max(outputs, 1)
-            val_acc_metric.update(preds, labels)
+        # Evaluation
+        val_loss_sum = 0
+        val_sample_count = 0
+        val_acc_metric.reset()
+        model.eval()
+        with torch.no_grad():
+            for images, labels in val_loader:
+                images = images.to(device)
+                labels = labels.to(device)
+                outputs = model(images)
 
-    val_accuracy = val_acc_metric.compute()
+                loss = criterion(outputs, labels)
+                val_loss_sum += loss.item() * images.size(0)
+                val_sample_count += images.size(0)
+
+                _, preds = torch.max(outputs, 1)
+                val_acc_metric.update(preds, labels)
+
+        if val_sample_count == 0:
+            avg_val_loss = float('inf')
+        else:
+            avg_val_loss = val_loss_sum / val_sample_count
+
+        current_val_accuracy = val_acc_metric.compute().item()
+
+        if early_stopper(avg_val_loss):
+            print(f"Epoch {epoch+1}: Early stopping triggered")
+
+        if current_val_accuracy > best_val_accuracy:
+            best_val_accuracy = current_val_accuracy
     
-    # Return the NEGATIVE of the validation accuracy (since gp_minimize MINIMIZES)
-    return -val_accuracy.item()
+    return -best_val_accuracy
+
+# neurons, activation_str, layers1, layers2, kernel_size1, kernel_size_2, dropout, dropout_rate, normalization, lr, batch_size, num_epochs = hyperparameters
 
 space = [
-    Integer(16, 64, name='num_filters_1'),
-    Integer(32, 128, name='num_filters_2'),
+    Integer(10, 100, name='neurons'),
     Categorical(['relu', 'sigmoid', 'tanh'], name='activation'),
-    Real(1e-5, 1e-2, 'log-uniform', name='learning_rate'),
+    Integer(2, 4, name='layers1'),
+    Integer(2, 4, name='layers2'),
+    Integer(3, 5, name='kernel_size'),
+    # Integer(3, 5, name='kernel_size_2'),
+    Real(0, 0.5, name='dropout_rate'),
+    Categorical([0, 1], name='normalization'),
+    Real(1e-5, 1e-2, 'log-uniform', name='lr'),
     Integer(32, 128, name='batch_size'),
     Integer(5, 20, name='num_epochs')
 ]
@@ -246,11 +326,14 @@ def final_test_run(hyperparameters, run_seed):
     np.random.seed(run_seed)
     torch.manual_seed(run_seed)
     # Ensure filters, batch_size, and epochs are integers
-    num_filters_1, num_filters_2, activation_str, lr, batch_size, num_epochs = hyperparameters
+    neurons, activation_str, layers1, layers2, kernel_size, dropout_rate, normalization, lr, batch_size, num_epochs = hyperparameters
+
     batch_size = int(batch_size)
     num_epochs = int(num_epochs)
-    num_filters_1 = int(num_filters_1)
-    num_filters_2 = int(num_filters_2)
+    layers1 = int(layers1)
+    layers2 = int(layers2)
+    neurons = int(neurons)
+    kernel_size = int(kernel_size)
     
     # 2. Data Split (New split for each run)
     # Ratio: 70% Train, 15% Val, 15% Test. Train and Val are combined for final training.
@@ -267,7 +350,7 @@ def final_test_run(hyperparameters, run_seed):
     
     # 3. Model Setup
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = CNN(in_channels=3, activation_fn_str=activation_str, f1_channels=num_filters_1, f2_channels=num_filters_2, num_classes=num_classes).to(device)
+    model = CNN(neurons=neurons, in_channels=3, activation_fn_str=activation_str, layers1=layers1, layers2=layers2, kernel_size_1=kernel_size, kernel_size_2=kernel_size, dropout_rate=dropout_rate, normalization=normalization, num_classes=num_classes, img_h=IMG_HEIGHT, img_w=IMG_WIDTH).to(device)
     
     # 4. Training (on Train + Val data)
     criterion = nn.CrossEntropyLoss()
@@ -307,6 +390,30 @@ def final_test_run(hyperparameters, run_seed):
         rec_metric.compute().item()
     )
 
+def baye():
+    res_gp = None
+    if os.path.exists(OPTMIZED_HPS_PATH):
+        print(f"Loading optimized hyperparameters from {OPTIMIZED_HPS_PATH}")
+        with open(OPTIMIZED_HPS_PATH, 'rb') as f:
+            res_gp = skopt.load(f)
+    else:
+        print("Running Bayesian Optimization...")
+        res_gp = gp_minimize(
+            cnn_objective,   # Function to minimize (returns -Validation Accuracy)
+            space,           # Hyperparameter search space
+            n_calls=30,      # Total number of function evaluations (e.g., 30 experiments)
+            n_random_starts=10, # Number of random points to start with
+            random_state=42  # Seed for reproducibility of the BO process
+        )
+        skopt.dump(res_gp, OPTIMIZED_HPS_PATH)
+        print(f"Optimization results saved to {OPTIMIZED_HPS_PATH}")
+
+        best_hps = res_gp.x
+
+        print(f"Best hyperparameters is {best_hps}")
+    
+
+
 def train():
 
     res_gp = None
@@ -325,6 +432,8 @@ def train():
         )
         skopt.dump(res_gp, OPTIMIZED_HPS_PATH)
         print(f"Optimization results saved to {OPTIMIZED_HPS_PATH}")
+    
+
 
     best_hps = res_gp.x
     best_validation_score = -res_gp.fun
@@ -363,4 +472,20 @@ def train():
     print("=" * 50)
 
 if __name__ == "__main__":
-    train()
+    parser = argparse.ArgumentParser(description='Assignemnt 2')
+    parser.add_argument(
+        "-t", "--train",
+        nargs=0,
+        help='Train'
+    )
+    parser.add_argument(
+        "-b", "--baye",
+        nargs=0,
+        help='Bayesian'
+    )
+
+    args = parser.parse_args()
+    if args.train:
+        train()
+    if args.baye:
+        baye()
