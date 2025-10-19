@@ -39,8 +39,8 @@ data_root = "./Dhan-Shomadhan"
 # IMG_WIDTH = 200
 # IMG_HEIGHT = 100
 
-IMG_WIDTH = 512
-IMG_HEIGHT = 512
+IMG_WIDTH = 256
+IMG_HEIGHT = 256
 
 MODEL_SAVE_PATH = 'cnn_model_state.pt'
 OPTIMIZED_HPS_PATH = 'optimized_hps.pkl'
