@@ -206,21 +206,7 @@ class CNN(nn.Module):
 
         self.block2 = nn.Sequential(*layers_2_list)
         
-        # Calculate the size of the final flattened layer
-        # Assuming all pooling layers are 2x2 with stride 2
-        # Total pooling steps: 1 (initial) + layers1 + layers2
-        final_h = img_h // (2**(1 + layers1 + layers2))
-        final_w = img_w // (2**(1 + layers1 + layers2))
-        
-        # The number of output channels from the last layer of block2
-        final_channels = cur_channel 
-
-        # Check for invalid image size (too small for many pooling layers)
-        if final_h < 1 or final_w < 1:
-            raise ValueError(f"Image size {img_h}x{img_w} is too small for {1 + layers1 + layers2} pooling layers.")
-
-        self.fc_input_size = final_channels * final_h * final_w
-        self.fc1 = nn.Linear(self.fc_input_size, num_classes) # Simplified to direct classification
+        self.fc1 = nn.Linear(cur_channel, num_classes) # Simplified to direct classification
 
     def forward(self, x):
         x = self.initial_block(x)
