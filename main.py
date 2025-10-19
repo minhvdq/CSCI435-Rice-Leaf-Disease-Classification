@@ -39,8 +39,8 @@ data_root = "./Dhan-Shomadhan"
 # IMG_WIDTH = 200
 # IMG_HEIGHT = 100
 
-IMG_WIDTH = 512
-IMG_HEIGHT = 512
+IMG_WIDTH = 256
+IMG_HEIGHT = 256
 
 MODEL_SAVE_PATH = 'cnn_model_state.pt'
 OPTIMIZED_HPS_PATH = 'optimized_hps.pkl'
@@ -328,8 +328,8 @@ def cnn_objective(hyperparameters):
 space = [
     Integer(10, 100, name='neurons'),
     Categorical(['relu', 'sigmoid', 'tanh'], name='activation'),
-    Integer(2, 4, name='layers1'),
-    Integer(2, 4, name='layers2'),
+    Integer(1, 3, name='layers1'),
+    Integer(1, 3, name='layers2'),
     Integer(3, 5, name='kernel_size'),
     # Integer(3, 5, name='kernel_size_2'),
     Real(0, 0.5, name='dropout_rate'),
