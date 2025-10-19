@@ -285,6 +285,7 @@ def train_and_evaluate(hyperparameters, train_loader, val_loader, device):
 
         if early_stopper(avg_val_loss):
             print(f"Epoch {epoch+1}: Early stopping triggered")
+            break;
 
         if current_val_accuracy > best_val_accuracy:
             best_val_accuracy = current_val_accuracy
