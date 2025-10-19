@@ -39,8 +39,8 @@ data_root = "./Dhan-Shomadhan"
 # IMG_WIDTH = 200
 # IMG_HEIGHT = 100
 
-IMG_WIDTH = 256
-IMG_HEIGHT = 256
+IMG_WIDTH = 512
+IMG_HEIGHT = 512
 
 MODEL_SAVE_PATH = 'cnn_model_state.pt'
 OPTIMIZED_HPS_PATH = 'optimized_hps.pkl'
@@ -308,19 +308,21 @@ def cnn_objective(hyperparameters):
             raise RuntimeError("CUDA is not available, forcing CPU run.")
     
     except RuntimeError as e:
-        # Check for the specific CUBLAS initialization error
-        if "CUBLAS_STATUS_NOT_INITIALIZED" in str(e) or "CUDA" not in str(e):
-            print("\n" + "="*80)
-            print(f"!!! WARNING: CUDA Runtime Error encountered: {e}")
-            print("!!! Switching to CPU and rerunning training attempt...")
-            print("="*80 + "\n")
-            
-            # Attempt 2: Rerun on CPU
-            device = "cpu"
-            # Move torchmetrics to CPU before use
-            return train_and_evaluate(hyperparameters, train_loader, val_loader, device)
-        else:
-            raise e
+        # Catch any RuntimeError (which includes CUDA/CUBLAS/OOM/Max-Pool errors)
+        # If the error is likely GPU-related, switch to CPU.
+        print("\n" + "="*80)
+        print(f"!!! WARNING: GPU-related RuntimeError encountered: {e}")
+        print("!!! Switching to CPU and rerunning training attempt...")
+        print("="*80 + "\n")
+        
+        # Attempt 2: Rerun on CPU
+        device = "cpu"
+        # Clear CUDA cache just in case the error was OOM before switching
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache() 
+        
+        # We re-raise the exception if the model fails again on CPU (unlikely)
+        return train_and_evaluate(hyperparameters, train_loader, val_loader, device)
 
 
 space = [
@@ -374,21 +376,22 @@ def final_test_run(hyperparameters, run_seed):
         else:
             # Skip the try block if CUDA is not available at all
             raise RuntimeError("CUDA is not available, forcing CPU run.")
-    
     except RuntimeError as e:
-        if "CUBLAS_STATUS_NOT_INITIALIZED" in str(e) or "CUDA" not in str(e):
-            print("\n" + "="*80)
-            print(f"!!! WARNING: CUDA Runtime Error encountered: {e}")
-            print("!!! Switching to CPU and rerunning training attempt...")
-            print("="*80 + "\n")
-            
-            # Attempt 2: Rerun on CPU
-            device = "cpu"
-            model = CNN(neurons=neurons, in_channels=3, activation_fn_str=activation_str, layers1=layers1, layers2=layers2, kernel_size_1=kernel_size, kernel_size_2=kernel_size, dropout_rate=dropout_rate, normalization=normalization, num_classes=num_classes, img_h=IMG_HEIGHT, img_w=IMG_WIDTH).to(device)
-            print(f"Model initialized on {device}")
-        else:
-            # Re-raise other unexpected RuntimeErrors
-            raise e
+        # Catch any RuntimeError (which includes CUDA/CUBLAS/OOM/Max-Pool errors)
+        # If the error is likely GPU-related, switch to CPU.
+        print("\n" + "="*80)
+        print(f"!!! WARNING: GPU-related RuntimeError encountered: {e}")
+        print("!!! Switching to CPU and rerunning training attempt...")
+        print("="*80 + "\n")
+        
+        # Attempt 2: Rerun on CPU
+        device = "cpu"
+        # Clear CUDA cache just in case the error was OOM before switching
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache() 
+        
+        # We re-raise the exception if the model fails again on CPU (unlikely)
+        return train_and_evaluate(hyperparameters, train_loader, val_loader, device)
 
     # 4. Training (on Train + Val data)
     criterion = nn.CrossEntropyLoss()
