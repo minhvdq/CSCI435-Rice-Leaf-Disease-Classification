@@ -206,7 +206,16 @@ class CNN(nn.Module):
 
         self.block2 = nn.Sequential(*layers_2_list)
         
-        self.fc1 = nn.Linear(cur_channel, num_classes) # Simplified to direct classification
+        dummy_input = torch.zeros(1, in_channels, img_h, img_w) 
+        
+        with torch.no_grad():
+            x = self.initial_block(dummy_input)
+            x = self.block1(x)
+            x = self.block2(x)
+            
+        fc_input_size = x.numel() // x.size(0)
+        
+        self.fc1 = nn.Linear(fc_input_size, num_classes)
 
     def forward(self, x):
         x = self.initial_block(x)
