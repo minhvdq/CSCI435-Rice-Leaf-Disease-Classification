@@ -217,8 +217,7 @@ class CNN(nn.Module):
         x = self.fc1(x)
         return x
 
-def cnn_objective(hyperparameters):
-    # f1_channels, f2_channels, kernel_size_1, kernel_size_2, activation_str, lr, batch_size, num_epochs = hyperparameters
+def train_and_evaluate(hyperparameters, train_loader, val_loader, device)
     neurons, activation_str, layers1, layers2, kernel_size, dropout_rate, normalization, lr, batch_size, num_epochs = hyperparameters
 
     batch_size = int(batch_size)
@@ -231,17 +230,6 @@ def cnn_objective(hyperparameters):
     early_stopper = EarlyStopper(patience=5, min_delta=0.001)
     best_val_accuracy = -np.inf
 
-    np.random.seed(42)
-
-    data_tr, data_val, _, labels_tr, labels_val, _ = split_data(data_root, train_ratio=0.65, val_ratio=0.15)
-
-    # Load data
-    transform = transforms.ToTensor()
-    train_loader = DataLoader(CustomImageDataset(data_tr, labels_tr, transform=transforms.ToTensor()), batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(CustomImageDataset(data_val, labels_val, transform=transforms.ToTensor()), batch_size=batch_size, shuffle=False)
-
-    # set up for training
-    device = "cuda" if torch.cuda.is_available() else "cpu"
     model = CNN(neurons=neurons, in_channels=3, activation_fn_str=activation_str, layers1=layers1, layers2=layers2, kernel_size_1=kernel_size, kernel_size_2=kernel_size, dropout_rate=dropout_rate, normalization=normalization, num_classes=num_classes, img_h=IMG_HEIGHT, img_w=IMG_WIDTH).to(device)
     print(model)
 
@@ -294,7 +282,46 @@ def cnn_objective(hyperparameters):
     
     return -best_val_accuracy
 
-# neurons, activation_str, layers1, layers2, kernel_size1, kernel_size_2, dropout, dropout_rate, normalization, lr, batch_size, num_epochs = hyperparameters
+def cnn_objective(hyperparameters):
+    # f1_channels, f2_channels, kernel_size_1, kernel_size_2, activation_str, lr, batch_size, num_epochs = hyperparameters
+
+    early_stopper = EarlyStopper(patience=5, min_delta=0.001)
+    best_val_accuracy = -np.inf
+
+    np.random.seed(42)
+
+    data_tr, data_val, _, labels_tr, labels_val, _ = split_data(data_root, train_ratio=0.65, val_ratio=0.15)
+
+    # Load data
+    transform = transforms.ToTensor()
+    train_loader = DataLoader(CustomImageDataset(data_tr, labels_tr, transform=transforms.ToTensor()), batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(CustomImageDataset(data_val, labels_val, transform=transforms.ToTensor()), batch_size=batch_size, shuffle=False)
+
+    # set up for training
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    
+    try:
+        if device == "cuda":
+            return train_and_evaluate(hyperparameters, train_loader, val_loader, device)
+        else:
+            # Skip the try block if CUDA is not available at all
+            raise RuntimeError("CUDA is not available, forcing CPU run.")
+    
+    except RuntimeError as e:
+        # Check for the specific CUBLAS initialization error
+        if "CUBLAS_STATUS_NOT_INITIALIZED" in str(e) or "CUDA" not in str(e):
+            print("\n" + "="*80)
+            print(f"!!! WARNING: CUDA Runtime Error encountered: {e}")
+            print("!!! Switching to CPU and rerunning training attempt...")
+            print("="*80 + "\n")
+            
+            # Attempt 2: Rerun on CPU
+            device = "cpu"
+            # Move torchmetrics to CPU before use
+            return train_and_evaluate(hyperparameters, train_loader, val_loader, device)
+        else:
+            raise e
+
 
 space = [
     Integer(10, 100, name='neurons'),
@@ -340,8 +367,29 @@ def final_test_run(hyperparameters, run_seed):
     
     # 3. Model Setup
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = CNN(neurons=neurons, in_channels=3, activation_fn_str=activation_str, layers1=layers1, layers2=layers2, kernel_size_1=kernel_size, kernel_size_2=kernel_size, dropout_rate=dropout_rate, normalization=normalization, num_classes=num_classes, img_h=IMG_HEIGHT, img_w=IMG_WIDTH).to(device)
+    try:
+        if device == "cuda":
+            model = CNN(neurons=neurons, in_channels=3, activation_fn_str=activation_str, layers1=layers1, layers2=layers2, kernel_size_1=kernel_size, kernel_size_2=kernel_size, dropout_rate=dropout_rate, normalization=normalization, num_classes=num_classes, img_h=IMG_HEIGHT, img_w=IMG_WIDTH).to(device)
+            print(f"Model initialized on {device}")
+        else:
+            # Skip the try block if CUDA is not available at all
+            raise RuntimeError("CUDA is not available, forcing CPU run.")
     
+    except RuntimeError as e:
+        if "CUBLAS_STATUS_NOT_INITIALIZED" in str(e) or "CUDA" not in str(e):
+            print("\n" + "="*80)
+            print(f"!!! WARNING: CUDA Runtime Error encountered: {e}")
+            print("!!! Switching to CPU and rerunning training attempt...")
+            print("="*80 + "\n")
+            
+            # Attempt 2: Rerun on CPU
+            device = "cpu"
+            model = CNN(neurons=neurons, in_channels=3, activation_fn_str=activation_str, layers1=layers1, layers2=layers2, kernel_size_1=kernel_size, kernel_size_2=kernel_size, dropout_rate=dropout_rate, normalization=normalization, num_classes=num_classes, img_h=IMG_HEIGHT, img_w=IMG_WIDTH).to(device)
+            print(f"Model initialized on {device}")
+        else:
+            # Re-raise other unexpected RuntimeErrors
+            raise e
+            
     # 4. Training (on Train + Val data)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
