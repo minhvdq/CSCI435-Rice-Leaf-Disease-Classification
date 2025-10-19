@@ -217,7 +217,7 @@ class CNN(nn.Module):
         x = self.fc1(x)
         return x
 
-def train_and_evaluate(hyperparameters, train_loader, val_loader, device)
+def train_and_evaluate(hyperparameters, train_loader, val_loader, device):
     neurons, activation_str, layers1, layers2, kernel_size, dropout_rate, normalization, lr, batch_size, num_epochs = hyperparameters
 
     batch_size = int(batch_size)
@@ -389,7 +389,7 @@ def final_test_run(hyperparameters, run_seed):
         else:
             # Re-raise other unexpected RuntimeErrors
             raise e
-            
+
     # 4. Training (on Train + Val data)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
