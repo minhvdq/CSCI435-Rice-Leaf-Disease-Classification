@@ -472,18 +472,20 @@ def train():
     print("=" * 50)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Assignemnt 2')
-    parser.add_argument(
-        "-t", "--train",
-        help='Train'
-    )
-    parser.add_argument(
-        "-b", "--baye",
-        help='Bayesian'
-    )
+    # parser = argparse.ArgumentParser(description='Assignemnt 2')
+    # parser.add_argument(
+    #     "-t", "--train",
+    #     help='Train'
+    # )
+    # parser.add_argument(
+    #     "-b", "--baye",
+    #     help='Bayesian'
+    # )
 
-    args = parser.parse_args()
-    if args.train:
-        train()
-    if args.baye:
-        baye()
+    # args = parser.parse_args()
+    # if args.train:
+    #     train()
+    # if args.baye:
+    #     baye()
+
+    train()
