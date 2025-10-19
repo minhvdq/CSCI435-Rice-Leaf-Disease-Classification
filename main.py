@@ -196,10 +196,14 @@ class CNN(nn.Module):
         layers_2_list = []
         if dropout_rate > 0:
             layers_2_list.append(nn.Dropout2d(p=dropout_rate))
+
+        cur_channel = neurons
         for _ in range(layers2):
-            layers_2_list.append(nn.Conv2d(neurons, neurons*2, kernel_size=kernel_size_2, padding='same')) # Double filters for deeper layers
+            layers_2_list.append(nn.Conv2d(cur_channel, cur_channel * 2, kernel_size=kernel_size_2, padding='same')) # Double filters for deeper layers
             layers_2_list.append(self.activation)
             layers_2_list.append(nn.MaxPool2d(kernel_size=2, stride=2))
+            cur_channel = cur_channel * 2
+
         self.block2 = nn.Sequential(*layers_2_list)
         
         # Calculate the size of the final flattened layer
@@ -209,7 +213,7 @@ class CNN(nn.Module):
         final_w = img_w // (2**(1 + layers1 + layers2))
         
         # The number of output channels from the last layer of block2
-        final_channels = neurons * 2 # Since we doubled channels in block2
+        final_channels = cur_channel 
 
         # Check for invalid image size (too small for many pooling layers)
         if final_h < 1 or final_w < 1:
