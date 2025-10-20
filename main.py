@@ -6,6 +6,7 @@ import os
 import argparse
 
 import torch
+import torchvision.models as models
 from torch import optim
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
@@ -38,6 +39,7 @@ IMG_HEIGHT = 256
 
 MODEL_SAVE_PATH = 'cnn_model_state.pt'
 OPTIMIZED_HPS_PATH = 'optimized_hps.pkl'
+OPTIMIZED_HPS_PATH_PRETRAINED = 'optimized_hps_pretrained.pkl'
 
 # You could calculate your dataset's specific mean/std for better results.
 MEAN = [0.485, 0.456, 0.406] 
@@ -56,7 +58,6 @@ test_val_transforms = transforms.Compose([
     transforms.Normalize(MEAN, STD)   
 ])
 
-# --- CustomImageDataset (Updated with BGR-to-RGB fix) ---
 class CustomImageDataset(Dataset):
     def __init__(self, file_paths, targets, transform=None):
         self.file_paths = file_paths
@@ -232,22 +233,51 @@ class CNN(nn.Module):
         x = x.reshape(x.shape[0], -1)
         x = self.fc1(x)
         return x
+    
+def create_model(pretrained, hyperparameters):
+    if not pretrained:
+        neurons, activation_str, layers1, layers2, kernel_size, dropout_rate, normalization, lr, batch_size, num_epochs = hyperparameters
+        batch_size = int(batch_size)
+        num_epochs = int(num_epochs)
+        layers1 = int(layers1)
+        layers2 = int(layers2)
+        neurons = int(neurons)
+        kernel_size = int(kernel_size)
+        model = CNN(neurons=neurons, in_channels=3, activation_fn_str=activation_str, layers1=layers1, layers2=layers2, kernel_size_1=kernel_size, kernel_size_2=kernel_size, dropout_rate=dropout_rate, normalization=normalization, num_classes=num_classes, img_h=IMG_HEIGHT, img_w=IMG_WIDTH)
+    else:
+        lr, batch_size, num_epochs = hyperparameters
+        batch_size = int(batch_size)
+        num_epochs = int(num_epochs)
+        model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+        
+        for param in model.parameters():
+            param.requires_grad = False
+            
+        num_ftrs = model.fc.in_features
+        model.fc = nn.Linear(num_ftrs, num_classes)
+        for param in model.fc.parameters():
+            param.requires_grad = True
+    return model
 
 # --- train_and_evaluate (Kept the same) ---
-def train_and_evaluate(hyperparameters, train_loader, val_loader, device):
-    neurons, activation_str, layers1, layers2, kernel_size, dropout_rate, normalization, lr, batch_size, num_epochs = hyperparameters
-
-    batch_size = int(batch_size)
-    num_epochs = int(num_epochs)
-    layers1 = int(layers1)
-    layers2 = int(layers2)
-    neurons = int(neurons)
-    kernel_size = int(kernel_size)
+def train_and_evaluate(pretrained, hyperparameters, train_loader, val_loader, device):
+    if not pretrained:
+        neurons, activation_str, layers1, layers2, kernel_size, dropout_rate, normalization, lr, batch_size, num_epochs = hyperparameters
+        batch_size = int(batch_size)
+        num_epochs = int(num_epochs)
+        layers1 = int(layers1)
+        layers2 = int(layers2)
+        neurons = int(neurons)
+        kernel_size = int(kernel_size)
+    else:
+        lr, batch_size, num_epochs = hyperparameters
+        batch_size = int(batch_size)
+        num_epochs = int(num_epochs)
 
     early_stopper = EarlyStopper(patience=5, min_delta=0.001)
     best_val_accuracy = -np.inf
 
-    model = CNN(neurons=neurons, in_channels=3, activation_fn_str=activation_str, layers1=layers1, layers2=layers2, kernel_size_1=kernel_size, kernel_size_2=kernel_size, dropout_rate=dropout_rate, normalization=normalization, num_classes=num_classes, img_h=IMG_HEIGHT, img_w=IMG_WIDTH).to(device)
+    model = create_model(pretrained, hyperparameters)
     print(model)
 
     criterion = nn.CrossEntropyLoss()
@@ -296,7 +326,7 @@ def train_and_evaluate(hyperparameters, train_loader, val_loader, device):
             break;
 
         if current_val_accuracy > best_val_accuracy:
-            best_val_accuracy = current_val_accuracy
+            best_val_accuracy = current_val_accurac
     
     return -best_val_accuracy
 
@@ -341,22 +371,37 @@ space = [
     Categorical([0, 1], name='normalization'),
     Real(1e-5, 1e-2, 'log-uniform', name='lr'),
     Integer(32, 128, name='batch_size'),
-    Integer(5, 20, name='num_epochs')
+    Integer(10, 30, name='num_epochs')
 ]
 
-def final_test_run(hyperparameters, run_seed):
+space_pretrained =[
+    Real(1e-5, 1e-4, 'log-uniform', name='lr'),
+    Integer(32, 128, name='batch_size'),
+    Integer(10, 30, name='num_epochs')
+]
+
+
+def final_test_run(pretrained, hyperparameters, seed):
+
+    if not pretrained:
+        neurons, activation_str, layers1, layers2, kernel_size, dropout_rate, normalization, lr, batch_size, num_epochs = hyperparameters
+        batch_size = int(batch_size)
+        num_epochs = int(num_epochs)
+        layers1 = int(layers1)
+        layers2 = int(layers2)
+        neurons = int(neurons)
+        kernel_size = int(kernel_size)
+    else:
+        lr, batch_size, num_epochs = hyperparameters
+        batch_size = int(batch_size)
+        num_epochs = int(num_epochs)
+
+    model = create_model(pretrained, hyperparameters)
+    print(model)
     
     # 1. Setup Seeds and Hyperparameters
-    np.random.seed(run_seed)
-    torch.manual_seed(run_seed)
-    neurons, activation_str, layers1, layers2, kernel_size, dropout_rate, normalization, lr, batch_size, num_epochs = hyperparameters
-
-    batch_size = int(batch_size)
-    num_epochs = int(num_epochs)
-    layers1 = int(layers1)
-    layers2 = int(layers2)
-    neurons = int(neurons)
-    kernel_size = int(kernel_size)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
     
     # 2. Data Split (New split for each run)
     data_tr, data_val, data_t, labels_tr, labels_val, labels_t = split_data(
@@ -374,7 +419,7 @@ def final_test_run(hyperparameters, run_seed):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     try:
         if device == "cuda":
-            model = CNN(neurons=neurons, in_channels=3, activation_fn_str=activation_str, layers1=layers1, layers2=layers2, kernel_size_1=kernel_size, kernel_size_2=kernel_size, dropout_rate=dropout_rate, normalization=normalization, num_classes=num_classes, img_h=IMG_HEIGHT, img_w=IMG_WIDTH).to(device)
+            model = model.to(device)
             print(f"Model initialized on {device}")
         else:
             raise RuntimeError("CUDA is not available, forcing CPU run.")
@@ -421,7 +466,6 @@ def final_test_run(hyperparameters, run_seed):
             acc_metric.update(preds, labels)
             prec_metric.update(preds, labels)
             rec_metric.update(preds, labels)
-
     return (
         acc_metric.compute().item(),
         prec_metric.compute().item(),
@@ -450,24 +494,27 @@ def baye():
 
         print(f"Best hyperparameters is {best_hps}")
     
-def train():
+def train(pretrained=True):
+
+    print(f"Running model {'ResNet18' if pretrained else 'CNN'}")
 
     res_gp = None
-    if os.path.exists(OPTIMIZED_HPS_PATH):
-        print(f"Loading optimized hyperparameters from {OPTIMIZED_HPS_PATH}")
-        with open(OPTIMIZED_HPS_PATH, 'rb') as f:
+    save_path = OPTIMIZED_HPS_PATH_PRETRAINED if pretrained else OPTIMIZED_HPS_PATH
+    if os.path.exists(save_path):
+        print(f"Loading optimized hyperparameters from {save_path}")
+        with open(save_path, 'rb') as f:
             res_gp = skopt.load(f)
     else:
         print("Running Bayesian Optimization...")
         res_gp = gp_minimize(
             cnn_objective,   # Function to minimize (returns -Validation Accuracy)
-            space,           # Hyperparameter search space
+            space_pretrained if pretrained else space,           # Hyperparameter search space
             n_calls=30,      # Total number of function evaluations (e.g., 30 experiments)
             n_random_starts=10, # Number of random points to start with
             random_state=42  # Seed for reproducibility of the BO process
         )
-        skopt.dump(res_gp, OPTIMIZED_HPS_PATH)
-        print(f"Optimization results saved to {OPTIMIZED_HPS_PATH}")
+        skopt.dump(res_gp, save_path)
+        print(f"Optimization results saved to {save_path}")
     
 
     best_hps = res_gp.x
@@ -475,6 +522,7 @@ def train():
 
     print("Bayesian Optimization Complete.")
     print(f"Best Hyperparameters: {dict(zip([s.name for s in space], best_hps))}")
+    print(f"Best validation score {best_validation_score}")
 
     seeds = [100, 200, 300, 400, 500]
     results = []
@@ -483,7 +531,7 @@ def train():
     # Execute 5 runs
     for i, seed in enumerate(seeds):
         print(f"--- Running Test {i+1}/5 with seed {seed} ---")
-        acc, prec, rec = final_test_run(best_hps, seed)
+        acc, prec, rec = final_test_run(pretrained=pretrained, hyperparameters=best_hps, seed=seed)
         results.append((acc, prec, rec))
         print(f"Results: Acc={acc:.4f}, Prec={prec:.4f}, Rec={rec:.4f}")
 
@@ -506,4 +554,7 @@ def train():
     print("=" * 50)
 
 if __name__ == "__main__":
-    train()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--pretrained', type=bool, default=True)
+    args = parser.parse_args()
+    train(args.pretrained)
