@@ -41,6 +41,8 @@ MODEL_SAVE_PATH = 'cnn_model_state.pt'
 OPTIMIZED_HPS_PATH = 'optimized_hps.pkl'
 OPTIMIZED_HPS_PATH_PRETRAINED = 'optimized_hps_pretrained.pkl'
 
+pretrained = True
+
 # You could calculate your dataset's specific mean/std for better results.
 MEAN = [0.485, 0.456, 0.406] 
 STD = [0.229, 0.224, 0.225]
@@ -234,7 +236,7 @@ class CNN(nn.Module):
         x = self.fc1(x)
         return x
     
-def create_model(pretrained, hyperparameters):
+def create_model(hyperparameters):
     if not pretrained:
         neurons, activation_str, layers1, layers2, kernel_size, dropout_rate, normalization, lr, batch_size, num_epochs = hyperparameters
         batch_size = int(batch_size)
@@ -260,7 +262,7 @@ def create_model(pretrained, hyperparameters):
     return model
 
 # --- train_and_evaluate (Kept the same) ---
-def train_and_evaluate(pretrained, hyperparameters, train_loader, val_loader, device):
+def train_and_evaluate(hyperparameters, train_loader, val_loader, device):
     if not pretrained:
         neurons, activation_str, layers1, layers2, kernel_size, dropout_rate, normalization, lr, batch_size, num_epochs = hyperparameters
         batch_size = int(batch_size)
@@ -277,7 +279,7 @@ def train_and_evaluate(pretrained, hyperparameters, train_loader, val_loader, de
     early_stopper = EarlyStopper(patience=5, min_delta=0.001)
     best_val_accuracy = -np.inf
 
-    model = create_model(pretrained, hyperparameters)
+    model = create_model(hyperparameters)
     print(model)
 
     criterion = nn.CrossEntropyLoss()
@@ -357,7 +359,7 @@ def cnn_objective(hyperparameters):
     
     try:
         if device == "cuda":
-            return train_and_evaluate(pretrained, hyperparameters, train_loader, val_loader, device)
+            return train_and_evaluate(hyperparameters, train_loader, val_loader, device)
         else:
             raise RuntimeError("CUDA is not available, forcing CPU run.")
     
@@ -371,7 +373,7 @@ def cnn_objective(hyperparameters):
         if torch.cuda.is_available():
             torch.cuda.empty_cache() 
         
-        return train_and_evaluate(pretrained, hyperparameters, train_loader, val_loader, device)
+        return train_and_evaluate(hyperparameters, train_loader, val_loader, device)
 
 space = [
     Integer(10, 100, name='neurons'),
@@ -393,7 +395,7 @@ space_pretrained =[
 ]
 
 
-def final_test_run(pretrained, hyperparameters, seed):
+def final_test_run(hyperparameters, seed):
 
     if not pretrained:
         neurons, activation_str, layers1, layers2, kernel_size, dropout_rate, normalization, lr, batch_size, num_epochs = hyperparameters
@@ -408,7 +410,7 @@ def final_test_run(pretrained, hyperparameters, seed):
         batch_size = int(batch_size)
         num_epochs = int(num_epochs)
 
-    model = create_model(pretrained, hyperparameters)
+    model = create_model(hyperparameters)
     print(model)
     
     # 1. Setup Seeds and Hyperparameters
@@ -506,7 +508,7 @@ def baye():
 
         print(f"Best hyperparameters is {best_hps}")
     
-def train(pretrained=True):
+def train():
 
     print(f"Running model {'ResNet18' if pretrained else 'CNN'}")
 
@@ -543,7 +545,7 @@ def train(pretrained=True):
     # Execute 5 runs
     for i, seed in enumerate(seeds):
         print(f"--- Running Test {i+1}/5 with seed {seed} ---")
-        acc, prec, rec = final_test_run(pretrained=pretrained, hyperparameters=best_hps, seed=seed)
+        acc, prec, rec = final_test_run(hyperparameters=best_hps, seed=seed)
         results.append((acc, prec, rec))
         print(f"Results: Acc={acc:.4f}, Prec={prec:.4f}, Rec={rec:.4f}")
 
@@ -569,4 +571,5 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--pretrained', type=bool, default=True)
     args = parser.parse_args()
-    train(args.pretrained)
+    pretrained = args.pretrained
+    train()
