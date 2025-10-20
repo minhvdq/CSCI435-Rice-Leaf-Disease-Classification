@@ -328,7 +328,7 @@ def train_and_evaluate(hyperparameters, train_loader, val_loader, device):
             break;
 
         if current_val_accuracy > best_val_accuracy:
-            best_val_accuracy = current_val_accurac
+            best_val_accuracy = current_val_accuracy
     
     return -best_val_accuracy
 
