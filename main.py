@@ -322,6 +322,8 @@ def train_and_evaluate(hyperparameters, train_loader, val_loader, device):
             avg_val_loss = val_loss_sum / val_sample_count
 
         current_val_accuracy = val_acc_metric.compute().item()
+        print(f"Epoch {epoch+1}: Validation loss {avg_val_loss}, Validation accuracy {current_val_accuracy}")
+
 
         if early_stopper(avg_val_loss):
             print(f"Epoch {epoch+1}: Early stopping triggered")
@@ -464,6 +466,8 @@ def final_test_run(hyperparameters, seed):
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            
+        print(f"Epoch {epoch+1}: Training loss {loss.item()}")
 
     acc_metric = Accuracy(task="multiclass", num_classes=num_classes).to(device)
     prec_metric = Precision(task="multiclass", num_classes=num_classes, average='macro').to(device)
