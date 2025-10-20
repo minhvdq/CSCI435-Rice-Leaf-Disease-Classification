@@ -332,20 +332,32 @@ def train_and_evaluate(pretrained, hyperparameters, train_loader, val_loader, de
 
 # --- cnn_objective (Updated to use new transforms) ---
 def cnn_objective(hyperparameters):
+    if not pretrained:
+        neurons, activation_str, layers1, layers2, kernel_size, dropout_rate, normalization, lr, batch_size, num_epochs = hyperparameters
+        batch_size = int(batch_size)
+        num_epochs = int(num_epochs)
+        layers1 = int(layers1)
+        layers2 = int(layers2)
+        neurons = int(neurons)
+        kernel_size = int(kernel_size)
+    else:
+        lr, batch_size, num_epochs = hyperparameters
+        batch_size = int(batch_size)
+        num_epochs = int(num_epochs)
 
     np.random.seed(42)
 
     data_tr, data_val, _, labels_tr, labels_val, _ = split_data(data_root, train_ratio=0.65, val_ratio=0.15)
 
-    train_loader = DataLoader(CustomImageDataset(data_tr, labels_tr, transform=train_transforms), batch_size=int(hyperparameters[8]), shuffle=True)
-    val_loader = DataLoader(CustomImageDataset(data_val, labels_val, transform=test_val_transforms), batch_size=int(hyperparameters[8]), shuffle=False)
+    train_loader = DataLoader(CustomImageDataset(data_tr, labels_tr, transform=train_transforms), batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(CustomImageDataset(data_val, labels_val, transform=test_val_transforms), batch_size=batch_size, shuffle=False)
 
     # set up for training
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
     try:
         if device == "cuda":
-            return train_and_evaluate(hyperparameters, train_loader, val_loader, device)
+            return train_and_evaluate(pretrained, hyperparameters, train_loader, val_loader, device)
         else:
             raise RuntimeError("CUDA is not available, forcing CPU run.")
     
@@ -359,7 +371,7 @@ def cnn_objective(hyperparameters):
         if torch.cuda.is_available():
             torch.cuda.empty_cache() 
         
-        return train_and_evaluate(hyperparameters, train_loader, val_loader, device)
+        return train_and_evaluate(pretrained, hyperparameters, train_loader, val_loader, device)
 
 space = [
     Integer(10, 100, name='neurons'),
