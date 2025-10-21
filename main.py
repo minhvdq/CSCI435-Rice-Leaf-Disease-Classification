@@ -48,11 +48,21 @@ default = False
 MEAN = [0.485, 0.456, 0.406] 
 STD = [0.229, 0.224, 0.225]
 
+# train_transforms = transforms.Compose([
+#     transforms.ToTensor(),             # Converts image to tensor and scales to [0, 1]
+#     transforms.RandomHorizontalFlip(p=0.5), # Augmentation 1: Random flip
+#     transforms.RandomRotation(degrees=15),  # Augmentation 2: Small random rotation
+#     transforms.ColorJitter(brightness=0.1, contrast=0.1), # Augmentation 3: Minor color variation
+#     transforms.Normalize(MEAN, STD)    
+# ])
+
 train_transforms = transforms.Compose([
-    transforms.ToTensor(),             # Converts image to tensor and scales to [0, 1]
-    transforms.RandomHorizontalFlip(p=0.5), # Augmentation 1: Random flip
-    transforms.RandomRotation(degrees=15),  # Augmentation 2: Small random rotation
-    transforms.ColorJitter(brightness=0.1, contrast=0.1), # Augmentation 3: Minor color variation
+    transforms.ToTensor(),             
+    transforms.RandomHorizontalFlip(p=0.5), 
+    transforms.RandomVerticalFlip(p=0.2), # Added: More generalizable flips
+    transforms.RandomRotation(degrees=30),  # Increased rotation
+    # Increased Jitter to force robustness against lighting/shadows (Field background)
+    transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2), 
     transforms.Normalize(MEAN, STD)    
 ])
 
@@ -256,6 +266,13 @@ def create_model(hyperparameters):
         for param in model.parameters():
             param.requires_grad = False
             
+        # 2. Unfreeze the FINAL two blocks (layer4 and layer3)
+        for param in model.layer4.parameters():
+            param.requires_grad = True
+        for param in model.layer3.parameters():
+            param.requires_grad = True
+
+        # 3. Replace and Unfreeze the final FC layer (classification head)
         num_ftrs = model.fc.in_features
         model.fc = nn.Linear(num_ftrs, num_classes)
         for param in model.fc.parameters():
@@ -276,6 +293,8 @@ def train_and_evaluate(hyperparameters, train_loader, val_loader, device):
         lr, batch_size, num_epochs = hyperparameters
         batch_size = int(batch_size)
         num_epochs = int(num_epochs)
+    
+    lr_backbone = lr * 0.1
 
     early_stopper = EarlyStopper(patience=5, min_delta=0.001)
     best_val_accuracy = -np.inf
@@ -284,7 +303,16 @@ def train_and_evaluate(hyperparameters, train_loader, val_loader, device):
     print(model)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
+    if pretrained:
+        optimizer = optim.Adam([
+            {'params': model.fc.parameters(), 'lr': lr, 'weight_decay': 1e-4}, # High L.R. for the new layer
+            {'params': model.layer4.parameters(), 'lr': lr_backbone, 'weight_decay': 1e-4}, # Low L.R. for fine-tuning
+            {'params': model.layer3.parameters(), 'lr': lr_backbone, 'weight_decay': 1e-4}, # Low L.R. for fine-tuning
+        ], lr=lr_backbone) # Default L.R. for any other parameters (will be ignored if frozen)
+    else:
+        # Use the single L.R. from the optimization space for custom CNN
+        optimizer = optim.Adam(model.parameters(), lr=lr)
+
     val_acc_metric = Accuracy(task="multiclass", num_classes=num_classes).to(device)
 
     # Training loop
@@ -392,9 +420,9 @@ space = [
 ]
 
 space_pretrained =[
-    Real(1e-5, 1e-4, 'log-uniform', name='lr'),
+    Real(1e-4, 1e-2, 'log-uniform', name='lr'),
     Integer(32, 128, name='batch_size'),
-    Integer(10, 30, name='num_epochs')
+    Integer(20, 40, name='num_epochs')
 ]
 
 default_hp_cnn = [32, 'relu', 1, 1, 3, 0.0, 1, 1e-4, 64, 20]
