@@ -42,6 +42,7 @@ OPTIMIZED_HPS_PATH = 'optimized_hps.pkl'
 OPTIMIZED_HPS_PATH_PRETRAINED = 'optimized_hps_pretrained.pkl'
 
 pretrained = True
+default = False
 
 # You could calculate your dataset's specific mean/std for better results.
 MEAN = [0.485, 0.456, 0.406] 
@@ -396,6 +397,9 @@ space_pretrained =[
     Integer(10, 30, name='num_epochs')
 ]
 
+default_hp_cnn = [32, 'relu', 1, 1, 3, 0.0, 1, 1e-4, 64, 20]
+default_hp_pretrained = [1e-4, 32, 30]
+
 
 def final_test_run(hyperparameters, seed):
 
@@ -491,6 +495,8 @@ def final_test_run(hyperparameters, seed):
     )
 
 def baye():
+
+    default_hps = {}
     res_gp = None
     if os.path.exists(OPTIMIZED_HPS_PATH):
         print(f"Loading optimized hyperparameters from {OPTIMIZED_HPS_PATH}")
@@ -513,34 +519,33 @@ def baye():
         print(f"Best hyperparameters is {best_hps}")
     
 def train():
+    if not default:
+        res_gp = None
+        save_path = OPTIMIZED_HPS_PATH_PRETRAINED if pretrained else OPTIMIZED_HPS_PATH
 
-    print(f"Running model {'ResNet18' if pretrained else 'CNN'}")
-
-    res_gp = None
-    save_path = OPTIMIZED_HPS_PATH_PRETRAINED if pretrained else OPTIMIZED_HPS_PATH
-    if os.path.exists(save_path):
-        print(f"Loading optimized hyperparameters from {save_path}")
-        with open(save_path, 'rb') as f:
-            res_gp = skopt.load(f)
+        if os.path.exists(save_path):
+            print(f"Loading optimized hyperparameters from {save_path}")
+            with open(save_path, 'rb') as f:
+                res_gp = skopt.load(f)
+        else:
+            print("Running Bayesian Optimization...")
+            res_gp = gp_minimize(
+                cnn_objective,   # Function to minimize (returns -Validation Accuracy)
+                space_pretrained if pretrained else space,           # Hyperparameter search space
+                n_calls=30,      # Total number of function evaluations (e.g., 30 experiments)
+                n_random_starts=10, # Number of random points to start with
+                random_state=42  # Seed for reproducibility of the BO process
+            )
+            skopt.dump(res_gp, save_path)
+            print(f"Optimization results saved to {save_path}")
+            best_hps = res_gp.x        
     else:
-        print("Running Bayesian Optimization...")
-        res_gp = gp_minimize(
-            cnn_objective,   # Function to minimize (returns -Validation Accuracy)
-            space_pretrained if pretrained else space,           # Hyperparameter search space
-            n_calls=30,      # Total number of function evaluations (e.g., 30 experiments)
-            n_random_starts=10, # Number of random points to start with
-            random_state=42  # Seed for reproducibility of the BO process
-        )
-        skopt.dump(res_gp, save_path)
-        print(f"Optimization results saved to {save_path}")
-    
-
-    best_hps = res_gp.x
-    best_validation_score = -res_gp.fun
+        best_hps = default_hp_cnn if not pretrained else default_hp_pretrained
 
     print("Bayesian Optimization Complete.")
     print(f"Best Hyperparameters: {dict(zip([s.name for s in space], best_hps))}")
-    print(f"Best validation score {best_validation_score}")
+
+    print(f"Running model {'ResNet18' if pretrained else 'CNN'} with {'default' if default else 'optimized'} hyperparameters")
 
     seeds = [100, 200, 300, 400, 500]
     results = []
@@ -574,6 +579,7 @@ def train():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--pretrained', type=bool, default=True)
+    parser.add_argument('--default', type=bool, default=False)
     args = parser.parse_args()
     pretrained = args.pretrained
     train()
