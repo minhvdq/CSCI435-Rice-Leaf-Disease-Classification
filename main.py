@@ -458,7 +458,7 @@ def final_test_run(hyperparameters, seed):
 
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
     
     for epoch in range(num_epochs):
         model.train()
