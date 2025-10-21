@@ -290,12 +290,10 @@ def train_and_evaluate(hyperparameters, train_loader, val_loader, device):
         neurons = int(neurons)
         kernel_size = int(kernel_size)
     else:
-        lr, batch_size, num_epochs = hyperparameters
+        lr, lr_backbone, batch_size, num_epochs, weight_decay = hyperparameters
         batch_size = int(batch_size)
         num_epochs = int(num_epochs)
     
-    lr_backbone = lr * 0.1
-
     early_stopper = EarlyStopper(patience=5, min_delta=0.001)
     best_val_accuracy = -np.inf
 
@@ -306,8 +304,8 @@ def train_and_evaluate(hyperparameters, train_loader, val_loader, device):
     if pretrained:
         optimizer = optim.Adam([
             {'params': model.fc.parameters(), 'lr': lr, 'weight_decay': 1e-4}, # High L.R. for the new layer
-            {'params': model.layer4.parameters(), 'lr': lr_backbone, 'weight_decay': 1e-4}, # Low L.R. for fine-tuning
-            {'params': model.layer3.parameters(), 'lr': lr_backbone, 'weight_decay': 1e-4}, # Low L.R. for fine-tuning
+            {'params': model.layer4.parameters(), 'lr': lr_backbone, 'weight_decay': weight_decay}, # Low L.R. for fine-tuning
+            {'params': model.layer3.parameters(), 'lr': lr_backbone, 'weight_decay': weight_decay}, # Low L.R. for fine-tuning
         ], lr=lr_backbone) # Default L.R. for any other parameters (will be ignored if frozen)
     else:
         # Use the single L.R. from the optimization space for custom CNN
@@ -374,7 +372,7 @@ def cnn_objective(hyperparameters):
         neurons = int(neurons)
         kernel_size = int(kernel_size)
     else:
-        lr, batch_size, num_epochs = hyperparameters
+        lr, lr_backbone, batch_size, num_epochs, weight_decay = hyperparameters
         batch_size = int(batch_size)
         num_epochs = int(num_epochs)
 
@@ -421,8 +419,10 @@ space = [
 
 space_pretrained =[
     Real(1e-4, 1e-2, 'log-uniform', name='lr'),
+    Real(1e-6, 1e-4, 'log-uniform', name='lr_backbone'),    # Very low for fine-tuning layers 3 and 4
     Integer(32, 128, name='batch_size'),
     Integer(20, 40, name='num_epochs')
+    Real(1e-5, 1e-3, 'log-uniform', name='weight_decay')
 ]
 
 default_hp_cnn = [32, 'relu', 1, 1, 3, 0.0, 1, 1e-4, 64, 20]
@@ -440,11 +440,10 @@ def final_test_run(hyperparameters, seed):
         neurons = int(neurons)
         kernel_size = int(kernel_size)
     else:
-        lr, batch_size, num_epochs = hyperparameters
+        lr, lr_backbone, batch_size, num_epochs, weight_decay = hyperparameters
         batch_size = int(batch_size)
         num_epochs = int(num_epochs)
 
-    lr_backbone = lr * 0.1
     model = create_model(hyperparameters)
     print(model)
     
@@ -492,8 +491,8 @@ def final_test_run(hyperparameters, seed):
     if pretrained:
         optimizer = optim.Adam([
             {'params': model.fc.parameters(), 'lr': lr, 'weight_decay': 1e-4}, # High L.R. for the new layer
-            {'params': model.layer4.parameters(), 'lr': lr_backbone, 'weight_decay': 1e-4}, # Low L.R. for fine-tuning
-            {'params': model.layer3.parameters(), 'lr': lr_backbone, 'weight_decay': 1e-4}, # Low L.R. for fine-tuning
+            {'params': model.layer4.parameters(), 'lr': lr_backbone, 'weight_decay': weight_decay}, # Low L.R. for fine-tuning
+            {'params': model.layer3.parameters(), 'lr': lr_backbone, 'weight_decay': weight_decay}, # Low L.R. for fine-tuning
         ], lr=lr_backbone) # Default L.R. for any other parameters (will be ignored if frozen)
     else:
         # Use the single L.R. from the optimization space for custom CNN
