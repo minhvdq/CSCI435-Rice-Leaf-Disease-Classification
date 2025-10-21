@@ -398,7 +398,7 @@ space_pretrained =[
 ]
 
 default_hp_cnn = [32, 'relu', 1, 1, 3, 0.0, 1, 1e-4, 64, 20]
-default_hp_pretrained = [1e-4, 32, 20]
+default_hp_pretrained = [1e-4, 32, 30]
 
 
 def final_test_run(hyperparameters, seed):
