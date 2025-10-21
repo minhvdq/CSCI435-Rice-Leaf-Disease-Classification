@@ -444,6 +444,7 @@ def final_test_run(hyperparameters, seed):
         batch_size = int(batch_size)
         num_epochs = int(num_epochs)
 
+    lr_backbone = lr * 0.1
     model = create_model(hyperparameters)
     print(model)
     
@@ -488,7 +489,15 @@ def final_test_run(hyperparameters, seed):
 
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
+    if pretrained:
+        optimizer = optim.Adam([
+            {'params': model.fc.parameters(), 'lr': lr, 'weight_decay': 1e-4}, # High L.R. for the new layer
+            {'params': model.layer4.parameters(), 'lr': lr_backbone, 'weight_decay': 1e-4}, # Low L.R. for fine-tuning
+            {'params': model.layer3.parameters(), 'lr': lr_backbone, 'weight_decay': 1e-4}, # Low L.R. for fine-tuning
+        ], lr=lr_backbone) # Default L.R. for any other parameters (will be ignored if frozen)
+    else:
+        # Use the single L.R. from the optimization space for custom CNN
+        optimizer = optim.Adam(model.parameters(), lr=lr)
     
     for epoch in range(num_epochs):
         model.train()
