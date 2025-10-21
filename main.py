@@ -426,7 +426,7 @@ space_pretrained =[
 ]
 
 default_hp_cnn = [32, 'relu', 1, 1, 3, 0.0, 1, 1e-4, 64, 20]
-default_hp_pretrained = [1e-4, 32, 30]
+default_hp_pretrained = [0.0003105709359650107, 1e-4, 32, 30, 0.00045649513621273853]
 
 
 def final_test_run(hyperparameters, seed):
@@ -483,7 +483,7 @@ def final_test_run(hyperparameters, seed):
         if torch.cuda.is_available():
             torch.cuda.empty_cache() 
         
-        model = CNN(neurons=neurons, in_channels=3, activation_fn_str=activation_str, layers1=layers1, layers2=layers2, kernel_size_1=kernel_size, kernel_size_2=kernel_size, dropout_rate=dropout_rate, normalization=normalization, num_classes=num_classes, img_h=IMG_HEIGHT, img_w=IMG_WIDTH).to(device)
+        model = create_model(hyperparameters)
         print(f"Model initialized on {device}")
 
 
