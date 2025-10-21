@@ -432,6 +432,8 @@ def final_test_run(hyperparameters, seed):
     data_tr_final = data_tr + data_val
     labels_tr_final = labels_tr + labels_val
 
+    print(f"lerning rate {lr}, batch size {batch_size}, number of epochs {num_epochs}")
+
     train_loader = DataLoader(CustomImageDataset(data_tr_final, labels_tr_final, transform=train_transforms), batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(CustomImageDataset(data_t, labels_t, transform=test_val_transforms), batch_size=batch_size, shuffle=False)
     
