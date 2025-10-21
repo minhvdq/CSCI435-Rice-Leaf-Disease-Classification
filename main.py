@@ -284,7 +284,7 @@ def train_and_evaluate(hyperparameters, train_loader, val_loader, device):
     print(model)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
     val_acc_metric = Accuracy(task="multiclass", num_classes=num_classes).to(device)
 
     # Training loop
@@ -352,7 +352,7 @@ def cnn_objective(hyperparameters):
 
     np.random.seed(42)
 
-    data_tr, data_val, _, labels_tr, labels_val, _ = split_data(data_root, train_ratio=0.65, val_ratio=0.15)
+    data_tr, data_val, _, labels_tr, labels_val, _ = split_data(data_root, train_ratio=0.7, val_ratio=0.15)
 
     train_loader = DataLoader(CustomImageDataset(data_tr, labels_tr, transform=train_transforms), batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(CustomImageDataset(data_val, labels_val, transform=test_val_transforms), batch_size=batch_size, shuffle=False)
@@ -425,7 +425,7 @@ def final_test_run(hyperparameters, seed):
     
     # 2. Data Split (New split for each run)
     data_tr, data_val, data_t, labels_tr, labels_val, labels_t = split_data(
-        data_root, train_ratio=0.65, val_ratio=0.15 
+        data_root, train_ratio=0.7, val_ratio=0.15 
     )
 
     # Combine Train and Val for the final, full training set
