@@ -519,6 +519,7 @@ def baye():
         print(f"Best hyperparameters is {best_hps}")
     
 def train():
+    best_hps = default_hp_cnn if not pretrained else default_hp_pretrained
     if not default:
         res_gp = None
         save_path = OPTIMIZED_HPS_PATH_PRETRAINED if pretrained else OPTIMIZED_HPS_PATH
@@ -538,9 +539,7 @@ def train():
             )
             skopt.dump(res_gp, save_path)
             print(f"Optimization results saved to {save_path}")
-            best_hps = res_gp.x        
-    else:
-        best_hps = default_hp_cnn if not pretrained else default_hp_pretrained
+        best_hps = res_gp.x        
 
     print("Bayesian Optimization Complete.")
     print(f"Best Hyperparameters: {dict(zip([s.name for s in space], best_hps))}")
