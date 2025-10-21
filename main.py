@@ -577,19 +577,42 @@ def train():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--pretrained', type=bool, default=True)
-    parser.add_argument('--default', type=bool, default=False)
-    parser.add_argument('--baye', type=bool, default=False)
+
+    parser.add_argument('--no-pretrained', action='store_true', help='Set this flag to disable the pretrained model (i.e., set pretrained=False).')
+
+    parser.add_argument('--default', action='store_true', help='Enable default settings.')
+    parser.add_argument('--baye', action='store_true', help='Run Bayesian Optimization.')
+    
     parser.add_argument('--manual', type=int, default=20)
+    
     args = parser.parse_args()
-    if args.pretrained:
-        pretrained = args.pretrained
-    if args.default:
-        default = args.default
-    if args.manual:
+
+    pretrained = not args.no_pretrained
+    default = args.default
+    
+    # For demonstration:
+    print(f"Final calculated 'pretrained' status: {pretrained}")
+    print(f"Final calculated 'default' status: {default}")
+    
+    if not pretrained:
+        print("Setting global 'pretrained' to False.")
+  
+        pass
+
+    if default:
+        print("Enabling default settings.")
+        # Perform actions for default settings
+        pass
+
+    if args.manual != 20: # Only apply if manual was changed from default
+        print(f"Applying manual value: {args.manual}")
         default_hp_cnn[9] = args.manual
         default_hp_pretrained[2] = args.manual
-    if args.baye and args.baye == True:
+    
+    # ------------------------------------------------------------------
+    # Execution Logic
+    
+    if args.baye:
         baye()
     else:
         train()
