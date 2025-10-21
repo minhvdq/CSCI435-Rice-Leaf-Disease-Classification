@@ -258,7 +258,7 @@ def create_model(hyperparameters):
         kernel_size = int(kernel_size)
         model = CNN(neurons=neurons, in_channels=3, activation_fn_str=activation_str, layers1=layers1, layers2=layers2, kernel_size_1=kernel_size, kernel_size_2=kernel_size, dropout_rate=dropout_rate, normalization=normalization, num_classes=num_classes, img_h=IMG_HEIGHT, img_w=IMG_WIDTH)
     else:
-        lr, batch_size, num_epochs = hyperparameters
+        lr, lr_backbone, batch_size, num_epochs, weight_decay = hyperparameters
         batch_size = int(batch_size)
         num_epochs = int(num_epochs)
         model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
