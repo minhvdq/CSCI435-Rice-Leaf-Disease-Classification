@@ -579,13 +579,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--pretrained', type=bool, default=True)
     parser.add_argument('--default', type=bool, default=False)
-    parser.add_argument('--baye')
+    parser.add_argument('--baye', type=bool, default=False)
     args = parser.parse_args()
     if args.pretrained:
         pretrained = args.pretrained
     if args.default:
         default = args.default
-    if args.baye:
+    if args.baye and args.baye == True:
         baye()
     else:
         train()
