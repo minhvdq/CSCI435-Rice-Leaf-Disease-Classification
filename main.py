@@ -580,6 +580,7 @@ if __name__ == "__main__":
     parser.add_argument('--pretrained', type=bool, default=True)
     parser.add_argument('--default', type=bool, default=False)
     parser.add_argument('--baye', type=bool, default=False)
+    parser.add_argument('--manual', type=int, default=0)
     args = parser.parse_args()
     if args.pretrained:
         pretrained = args.pretrained
@@ -587,5 +588,8 @@ if __name__ == "__main__":
         default = args.default
     if args.baye and args.baye == True:
         baye()
-    else:
-        train()
+    if args.manual:
+        default_hps_cnn[9] += args.manual
+        default_hps_pretrained[2] += args.manual
+
+    train()
