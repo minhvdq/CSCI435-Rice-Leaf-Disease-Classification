@@ -421,7 +421,7 @@ space_pretrained =[
     Real(1e-4, 1e-2, 'log-uniform', name='lr'),
     Real(1e-6, 1e-4, 'log-uniform', name='lr_backbone'),    # Very low for fine-tuning layers 3 and 4
     Integer(32, 128, name='batch_size'),
-    Integer(20, 40, name='num_epochs')
+    Integer(20, 40, name='num_epochs'),
     Real(1e-5, 1e-3, 'log-uniform', name='weight_decay')
 ]
 
