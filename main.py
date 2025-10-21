@@ -586,10 +586,10 @@ if __name__ == "__main__":
         pretrained = args.pretrained
     if args.default:
         default = args.default
-    if args.baye and args.baye == True:
-        baye()
     if args.manual:
         default_hp_cnn[9] = args.manual
         default_hp_pretrained[2] = args.manual
-
-    train()
+    if args.baye and args.baye == True:
+        baye()
+    else:
+        train()
