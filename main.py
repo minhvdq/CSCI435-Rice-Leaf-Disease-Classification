@@ -587,5 +587,5 @@ if __name__ == "__main__":
         default = args.default
     if args.baye:
         baye()
-        return
-    train()
+    else:
+        train()
