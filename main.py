@@ -73,7 +73,8 @@ space_pretrained =[
 ]
 
 default_hp_cnn = [32, 'relu', 1, 1, 3, 0.0, 1, 1e-4, 64, 20]
-default_hp_pretrained = [0.0003105709359650107, 1e-4, 32, 30, 0.00045649513621273853]
+# default_hp_pretrained = [0.0003105709359650107, 1e-4, 32, 30, 0.00045649513621273853]
+default_hp_pretrained = [1e-3, 1e-5, 32, 30, 1e-4]
 
 # You could calculate your dataset's specific mean/std for better results.
 MEAN = [0.485, 0.456, 0.406] 
@@ -299,12 +300,11 @@ def create_model(hyperparameters):
         lr, lr_backbone, batch_size, num_epochs, weight_decay = hyperparameters
         batch_size = int(batch_size)
         num_epochs = int(num_epochs)
-        model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+        model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
         
         for param in model.parameters():
             param.requires_grad = False
             
-        # 2. Unfreeze the FINAL two blocks (layer4 and layer3)
         for param in model.layer4.parameters():
             param.requires_grad = True
         for param in model.layer3.parameters():
