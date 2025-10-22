@@ -640,6 +640,8 @@ def train():
     if record_results: 
         write_result(cur_row)
 
+print("test")
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
