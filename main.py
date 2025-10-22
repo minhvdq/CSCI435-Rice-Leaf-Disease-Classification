@@ -626,8 +626,8 @@ def train():
     avg_rec = np.mean(results_array[:, 2])
     std_rec = np.std(results_array[:, 2])
 
-    cur_result.append(avg_acc:.4f)
-    cur_result.append(std_acc:.4f)
+    cur_result.append("%.4f" % avg_acc)
+    cur_result.append("%.4f" % std_acc)
 
     print("\n" + "=" * 50)
     print("SECTION 6.1: FINAL EXPERIMENTAL RESULTS (AVERAGE OVER 5 RUNS)")
