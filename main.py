@@ -74,7 +74,7 @@ space_pretrained =[
 
 default_hp_cnn = [32, 'relu', 1, 1, 3, 0.0, 1, 1e-4, 64, 20]
 # default_hp_pretrained = [0.0003105709359650107, 1e-4, 32, 30, 0.00045649513621273853]
-default_hp_pretrained = [1e-3, 1e-5, 32, 30, 1e-4]
+default_hp_pretrained = [2.0 * 1e-4, 1e-5, 32, 40, 5.0 * 1e-4]
 
 # You could calculate your dataset's specific mean/std for better results.
 MEAN = [0.485, 0.456, 0.406] 
