@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import csv
 
 import os
 import argparse
@@ -212,17 +213,16 @@ def write_result(row):
     titles = titles_resnet18 if pretrained else titles_cnn
     try:
         with open(path, "x") as f:
-            writer = f.write(titles)
+            writer = csv.writer(f)
             writer.writerow(titles)
         print(f"File '{path}' created successfully.")
     except FileExistsError:
         print(f"File '{path}' already exists.")
     
     with open(path, "a") as f:
-        writer = f.write(row)
+        writer = csv.writer(f)
         writer.writerow(row)
-
-
+    print(f"Result {row} written to '{path}' successfully.")
 
 class CNN(nn.Module):
     def __init__(self, neurons, in_channels, activation_fn_str, layers1, layers2, kernel_size_1, kernel_size_2, dropout_rate, normalization, num_classes, img_h, img_w):
