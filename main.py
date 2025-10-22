@@ -209,10 +209,11 @@ def split_data(root_path, train_ratio=0.75, val_ratio=0.15):
 
 def write_result(row):
     path = RESULTS_RESNET18_PATH if pretrained else RESULTS_CNN_PATH
+    titles = titles_resnet18 if pretrained else titles_cnn
     try:
         with open(path, "x") as f:
-            writer = f.write(titles_resnet18)
-            writer.writerow(titles_resnet18)
+            writer = f.write(titles)
+            writer.writerow(titles)
         print(f"File '{path}' created successfully.")
     except FileExistsError:
         print(f"File '{path}' already exists.")
