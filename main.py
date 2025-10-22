@@ -37,24 +37,49 @@ data_root = "./Dhan-Shomadhan"
 IMG_WIDTH = 256
 IMG_HEIGHT = 256
 
+# Constant variables
 MODEL_SAVE_PATH = 'cnn_model_state.pt'
 OPTIMIZED_HPS_PATH = 'optimized_hps.pkl'
 OPTIMIZED_HPS_PATH_PRETRAINED = 'optimized_hps_pretrained.pkl'
+RESULTS_RESNET18_PATH = 'results_resnet18.csv'
+RESULTS_CNN_PATH = 'results_cnn.csv'
 
+# State variables
 pretrained = True
 default = False
+mode = 0 # Assume 0 is mixed background, 1 is white background and 2 is field background
+record_results = True
+
+space = [
+    Integer(10, 100, name='neurons'),
+    Categorical(['relu', 'sigmoid', 'tanh'], name='activation'),
+    Integer(1, 3, name='layers1'),
+    Integer(1, 3, name='layers2'),
+    Integer(3, 5, name='kernel_size'),
+    Real(0, 0.5, name='dropout_rate'),
+    Categorical([0, 1], name='normalization'),
+    Real(1e-5, 1e-2, 'log-uniform', name='lr'),
+    Integer(32, 128, name='batch_size'),
+    Integer(10, 30, name='num_epochs')
+]
+
+space_pretrained =[
+    Real(1e-4, 1e-2, 'log-uniform', name='lr'),
+    Real(1e-6, 1e-4, 'log-uniform', name='lr_backbone'),    # Very low for fine-tuning layers 3 and 4
+    Integer(32, 128, name='batch_size'),
+    Integer(20, 40, name='num_epochs'),
+    Real(1e-5, 1e-3, 'log-uniform', name='weight_decay')
+]
+
+default_hp_cnn = [32, 'relu', 1, 1, 3, 0.0, 1, 1e-4, 64, 20]
+default_hp_pretrained = [0.0003105709359650107, 1e-4, 32, 30, 0.00045649513621273853]
 
 # You could calculate your dataset's specific mean/std for better results.
 MEAN = [0.485, 0.456, 0.406] 
 STD = [0.229, 0.224, 0.225]
 
-# train_transforms = transforms.Compose([
-#     transforms.ToTensor(),             # Converts image to tensor and scales to [0, 1]
-#     transforms.RandomHorizontalFlip(p=0.5), # Augmentation 1: Random flip
-#     transforms.RandomRotation(degrees=15),  # Augmentation 2: Small random rotation
-#     transforms.ColorJitter(brightness=0.1, contrast=0.1), # Augmentation 3: Minor color variation
-#     transforms.Normalize(MEAN, STD)    
-# ])
+titles_resnet18 = ["Mode", "Learning rate", "Learning rate backbone", "Batch size", "Number of epochs", "Weight decay", "Average Accuracy", "Fluctuation" "Time"]
+titles_cnn      = ["Mode", "Neurons", "Activation", "Block 1 Size", "Block 2 Size",  "Kernel Size", "Dropout Rate", "Is Normalized", "Learning Rate", "Batch Size", "Num Epochs", "Average Accuracy", "Fluctuation", "Time"]
 
 train_transforms = transforms.Compose([
     transforms.ToTensor(),             
@@ -71,6 +96,8 @@ test_val_transforms = transforms.Compose([
     transforms.Normalize(MEAN, STD)   
 ])
 
+cur_row = []
+
 class CustomImageDataset(Dataset):
     def __init__(self, file_paths, targets, transform=None):
         self.file_paths = file_paths
@@ -85,14 +112,12 @@ class CustomImageDataset(Dataset):
         img_path = self.file_paths[index]
         image = cv.imread(img_path)
         
-        # Check if image was loaded correctly
         if image is None:
             print(f"Warning: Could not load image {img_path}. Returning zero tensor.")
             return torch.zeros(3, IMG_HEIGHT, IMG_WIDTH, dtype=torch.float32), self.targets[index]
 
         image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
 
-        # 2. Apply preprocessing (Rotation and Resizing from your original logic)
         img_h, img_w, _ = image.shape
         
         # Rotation logic
@@ -102,14 +127,12 @@ class CustomImageDataset(Dataset):
         if image.shape[0] != IMG_HEIGHT or image.shape[1] != IMG_WIDTH:
             image = cv.resize(image, (IMG_WIDTH, IMG_HEIGHT), interpolation=cv.INTER_AREA)
 
-        # 3. Apply standard PyTorch/Tensor transformations
         if self.transform:
             image = self.transform(image)
         
         target = self.targets[index]
         return image, target
 
-# --- EarlyStopper (Kept the same) ---
 class EarlyStopper:
     def __init__(self, patience=5, min_delta=0.0):
         self.patience = patience
@@ -135,7 +158,6 @@ class EarlyStopper:
                 return True
             return False
 
-# --- Helper Functions (Kept the same) ---
 def imshow(img):
     npimg = img.numpy()
     plt.imshow(np.transpose(npimg, (1, 2, 0)))
@@ -185,7 +207,22 @@ def split_data(root_path, train_ratio=0.75, val_ratio=0.15):
             labels_t.append(all_labels[index])
     return data_tr, data_val, data_t, labels_tr, labels_val, labels_t
 
-# --- CNN Model (Kept the same) ---
+def write_result(row):
+    path = RESULTS_RESNET18_PATH if pretrained else RESULTS_CNN_PATH
+    try:
+        with open(path, "x") as f:
+            writer = f.write(titles_resnet18)
+            writer.writerow(titles_resnet18)
+        print(f"File '{path}' created successfully.")
+    except FileExistsError:
+        print(f"File '{path}' already exists.")
+    
+    with open(path, "a") as f:
+        writer = f.write(row)
+        writer.writerow(row)
+
+
+
 class CNN(nn.Module):
     def __init__(self, neurons, in_channels, activation_fn_str, layers1, layers2, kernel_size_1, kernel_size_2, dropout_rate, normalization, num_classes, img_h, img_w):
         super(CNN, self).__init__()
@@ -404,30 +441,6 @@ def cnn_objective(hyperparameters):
         
         return train_and_evaluate(hyperparameters, train_loader, val_loader, device)
 
-space = [
-    Integer(10, 100, name='neurons'),
-    Categorical(['relu', 'sigmoid', 'tanh'], name='activation'),
-    Integer(1, 3, name='layers1'),
-    Integer(1, 3, name='layers2'),
-    Integer(3, 5, name='kernel_size'),
-    Real(0, 0.5, name='dropout_rate'),
-    Categorical([0, 1], name='normalization'),
-    Real(1e-5, 1e-2, 'log-uniform', name='lr'),
-    Integer(32, 128, name='batch_size'),
-    Integer(10, 30, name='num_epochs')
-]
-
-space_pretrained =[
-    Real(1e-4, 1e-2, 'log-uniform', name='lr'),
-    Real(1e-6, 1e-4, 'log-uniform', name='lr_backbone'),    # Very low for fine-tuning layers 3 and 4
-    Integer(32, 128, name='batch_size'),
-    Integer(20, 40, name='num_epochs'),
-    Real(1e-5, 1e-3, 'log-uniform', name='weight_decay')
-]
-
-default_hp_cnn = [32, 'relu', 1, 1, 3, 0.0, 1, 1e-4, 64, 20]
-default_hp_pretrained = [0.0003105709359650107, 1e-4, 32, 30, 0.00045649513621273853]
-
 
 def final_test_run(hyperparameters, seed):
 
@@ -446,6 +459,9 @@ def final_test_run(hyperparameters, seed):
 
     model = create_model(hyperparameters)
     print(model)
+
+    # Append Hyperparameters to result for potential result write
+    cur_result.extend(hyperparameters)
     
     # 1. Setup Seeds and Hyperparameters
     np.random.seed(seed)
@@ -556,8 +572,12 @@ def baye():
         best_hps = res_gp.x   
     print(f"Model{'ResNet18' if pretrained else 'CNN'} with {'default' if default else 'optimized'} hyperparameters")  
     print(f"Hyperparameters: {dict(zip([s.name for s in space], best_hps))}")
+
+
 def train():
     best_hps = default_hp_cnn if not pretrained else default_hp_pretrained
+    cur_result = []
+    cur_result.append("Mixed" if mode == 0 else "White" if mode == 1 else "Field")
     if not default:
         res_gp = None
         save_path = OPTIMIZED_HPS_PATH_PRETRAINED if pretrained else OPTIMIZED_HPS_PATH
@@ -605,6 +625,9 @@ def train():
     avg_rec = np.mean(results_array[:, 2])
     std_rec = np.std(results_array[:, 2])
 
+    cur_result.append(avg_acc:.4f)
+    cur_result.append(std_acc:.4f)
+
     print("\n" + "=" * 50)
     print("SECTION 6.1: FINAL EXPERIMENTAL RESULTS (AVERAGE OVER 5 RUNS)")
     print("=" * 50)
@@ -612,6 +635,9 @@ def train():
     print(f"Macro Precision: {avg_prec:.4f} \u00B1 {std_prec:.4f}")
     print(f"Macro Recall: {avg_rec:.4f} \u00B1 {std_rec:.4f}")
     print("=" * 50)
+
+    if record_results: 
+        write_result(cur_result)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -622,6 +648,8 @@ if __name__ == "__main__":
     parser.add_argument('--baye', action='store_true', help='Run Bayesian Optimization.')
     
     parser.add_argument('--manual', type=int, default=20)
+
+    parser.add_argument('--field', action='store_true', help='')
     
     args = parser.parse_args()
 
@@ -639,16 +667,12 @@ if __name__ == "__main__":
 
     if default:
         print("Enabling default settings.")
-        # Perform actions for default settings
         pass
 
-    if args.manual != 20: # Only apply if manual was changed from default
+    if args.manual != 20:
         print(f"Applying manual value: {args.manual}")
         default_hp_cnn[9] = args.manual
         default_hp_pretrained[2] = args.manual
-    
-    # ------------------------------------------------------------------
-    # Execution Logic
     
     if args.baye:
         baye()
