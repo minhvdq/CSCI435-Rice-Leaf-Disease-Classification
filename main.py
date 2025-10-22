@@ -650,16 +650,19 @@ if __name__ == "__main__":
     
     parser.add_argument('--manual', type=int, default=20)
 
-    parser.add_argument('--field', action='store_true', help='')
+    parser.add_argument('--no-record', action='store_true', help='Enable recording')
     
     args = parser.parse_args()
 
     pretrained = not args.no_pretrained
+    record_results = not args.no_record
+
     default = args.default
     
     # For demonstration:
     print(f"Final calculated 'pretrained' status: {pretrained}")
     print(f"Final calculated 'default' status: {default}")
+    print(f"Final calculated 'record_results' status: {record_results}")
     
     if not pretrained:
         print("Setting global 'pretrained' to False.")
