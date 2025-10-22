@@ -462,7 +462,7 @@ def final_test_run(hyperparameters, seed):
     print(model)
 
     # Append Hyperparameters to result for potential result write
-    cur_result.extend(hyperparameters)
+    cur_row.extend(hyperparameters)
     
     # 1. Setup Seeds and Hyperparameters
     np.random.seed(seed)
@@ -577,8 +577,8 @@ def baye():
 
 def train():
     best_hps = default_hp_cnn if not pretrained else default_hp_pretrained
-    cur_result = []
-    cur_result.append("Mixed" if mode == 0 else "White" if mode == 1 else "Field")
+    cur_row= []
+    cur_row.append("Mixed" if mode == 0 else "White" if mode == 1 else "Field")
     if not default:
         res_gp = None
         save_path = OPTIMIZED_HPS_PATH_PRETRAINED if pretrained else OPTIMIZED_HPS_PATH
@@ -626,8 +626,8 @@ def train():
     avg_rec = np.mean(results_array[:, 2])
     std_rec = np.std(results_array[:, 2])
 
-    cur_result.append("%.4f" % avg_acc)
-    cur_result.append("%.4f" % std_acc)
+    cur_row.append("%.4f" % avg_acc)
+    cur_row.append("%.4f" % std_acc)
 
     print("\n" + "=" * 50)
     print("SECTION 6.1: FINAL EXPERIMENTAL RESULTS (AVERAGE OVER 5 RUNS)")
@@ -638,7 +638,7 @@ def train():
     print("=" * 50)
 
     if record_results: 
-        write_result(cur_result)
+        write_result(cur_row)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
