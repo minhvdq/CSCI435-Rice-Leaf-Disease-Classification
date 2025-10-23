@@ -50,6 +50,7 @@ pretrained = True
 default = False
 mode = 0 # Assume 0 is mixed background, 1 is white background and 2 is field background
 record_results = True
+split_mode = 0
 
 space = [
     Integer(10, 100, name='neurons'),
@@ -73,8 +74,8 @@ space_pretrained =[
 ]
 
 default_hp_cnn = [32, 'relu', 1, 1, 3, 0.0, 1, 1e-4, 64, 20]
-# default_hp_pretrained = [0.0003105709359650107, 1e-4, 32, 30, 0.00045649513621273853]
-default_hp_pretrained = [2.0 * 1e-4, 1e-5, 32, 40, 5.0 * 1e-4]
+default_hp_pretrained = [0.0003105709359650107, 1e-4, 32, 30, 0.00045649513621273853]
+# default_hp_pretrained = [2.0 * 1e-4, 1e-5, 32, 40, 5.0 * 1e-4]
 
 # You could calculate your dataset's specific mean/std for better results.
 MEAN = [0.485, 0.456, 0.406] 
@@ -166,12 +167,16 @@ def imshow(img):
     plt.show()
 
 def get_all_paths(data_root):
-    all_paths = []
-    all_labels = []
+    all_paths_white_bg = []
+    all_labels_white_bg = []
+    all_paths_field_bg = []
+    all_labels_field_bg = []
 
     condition_dirs = [d.name for d in os.scandir(data_root) if d.is_dir()]
     condition_dirs.sort()
-    for condition in condition_dirs:
+    for ind, condition in enumerate(condition_dirs):
+        cur_paths = all_paths_field_bg if ind == 0 else all_paths_white_bg
+        cur_labels = all_labels_field_bg if ind == 0 else all_labels_white_bg
         condition_path = os.path.join(data_root, condition)
         print(f"Condition path is {condition_path}")
         label_paths = [f.name for f in os.scandir(condition_path) if f.is_dir()]
@@ -184,29 +189,45 @@ def get_all_paths(data_root):
             image_file_paths.sort()
             for image_file_path in image_file_paths:
                 image_file_path_full = os.path.join(label_path_full, image_file_path)
-                all_paths.append(image_file_path_full)
-                all_labels.append(index)
-    return all_paths, all_labels
+                cur_paths.append(image_file_path_full)
+                cur_labels.append(index)
+    return all_paths_white_bg, all_labels_white_bg, all_paths_field_bg, all_labels_field_bg
 
 
 def split_data(root_path, train_ratio=0.75, val_ratio=0.15):
     
-    all_paths, all_labels = get_all_paths(root_path)
-    print(f"get {len(all_paths)} paths and {len(all_labels)} labels")
+    all_paths_white_bg, all_labels_white_bg, all_paths_field_bg, all_labels_field_bg = get_all_paths(root_path)
+    print(f"get {len(all_paths_white_bg)} paths and {len(all_labels_white_bg)} labels for white background")
+    print(f"get {len(all_paths_field_bg)} paths and {len(all_labels_field_bg)} labels for field background")
 
-    indices = np.arange(len(all_paths))
-    np.random.shuffle(indices)
     data_tr, data_val, data_t, labels_tr, labels_val, labels_t = [], [], [], [], [], []
-    for ci, index in enumerate(indices):
-        if ci < int(len(indices) * train_ratio):
-            data_tr.append(all_paths[index])
-            labels_tr.append(all_labels[index])
-        elif ci < int(len(indices) * (train_ratio + val_ratio)):
-            data_val.append(all_paths[index])
-            labels_val.append(all_labels[index])
+
+    indices_white_bg = np.arange(len(all_paths_white_bg))
+    indices_field_bg = np.arange(len(all_paths_field_bg))
+    np.random.shuffle(indices_white_bg)
+    np.random.shuffle(indices_field_bg)
+
+    for i in range(len(indices_white_bg)):
+        if i < int(len(indices_white_bg) * train_ratio):
+            data_tr.append(all_paths_white_bg[indices_white_bg[i]])
+            labels_tr.append(all_labels_white_bg[indices_white_bg[i]])
+        elif i < int(len(indices_white_bg) * (train_ratio + val_ratio)):
+            data_val.append(all_paths_white_bg[indices_white_bg[i]])
+            labels_val.append(all_labels_white_bg[indices_white_bg[i]])
         else:
-            data_t.append(all_paths[index])
-            labels_t.append(all_labels[index])
+            data_t.append(all_paths_white_bg[indices_white_bg[i]])
+            labels_t.append(all_labels_white_bg[indices_white_bg[i]])
+    for i in range(len(indices_field_bg)):
+        if i < int(len(indices_field_bg) * train_ratio):
+            data_tr.append(all_paths_field_bg[indices_field_bg[i]])
+            labels_tr.append(all_labels_field_bg[indices_field_bg[i]])
+        elif i < int(len(indices_field_bg) * (train_ratio + val_ratio)):
+            data_val.append(all_paths_field_bg[indices_field_bg[i]])
+            labels_val.append(all_labels_field_bg[indices_field_bg[i]])
+        else:
+            data_t.append(all_paths_field_bg[indices_field_bg[i]])
+
+            
     return data_tr, data_val, data_t, labels_tr, labels_val, labels_t
 
 def write_result(row):
@@ -300,7 +321,7 @@ def create_model(hyperparameters):
         lr, lr_backbone, batch_size, num_epochs, weight_decay = hyperparameters
         batch_size = int(batch_size)
         num_epochs = int(num_epochs)
-        model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
+        model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
         
         for param in model.parameters():
             param.requires_grad = False
