@@ -35,6 +35,7 @@ labels = ['Brown Spot', 'Leaf Scaled', 'Rice Blast', 'Rice Turgor', 'Sheath Blig
 
 data_root = "./Dhan-Shomadhan"
 
+# Metric resize image uniformly
 IMG_WIDTH = 256
 IMG_HEIGHT = 256
 
@@ -52,6 +53,7 @@ mode = 0 # Assume 0 is mixed background, 1 is white background and 2 is field ba
 record_results = True
 split_mode = 0
 
+# Hyperparameter space for CNN
 space = [
     Integer(10, 100, name='neurons'),
     Categorical(['relu', 'sigmoid', 'tanh'], name='activation'),
@@ -65,6 +67,7 @@ space = [
     Integer(10, 30, name='num_epochs')
 ]
 
+# Hyperparameter space for pretrained model (ResNet18)
 space_pretrained =[
     Real(1e-4, 1e-2, 'log-uniform', name='lr'),
     Real(1e-6, 1e-4, 'log-uniform', name='lr_backbone'),    # Very low for fine-tuning layers 3 and 4
@@ -73,17 +76,18 @@ space_pretrained =[
     Real(1e-5, 1e-3, 'log-uniform', name='weight_decay')
 ]
 
-default_hp_cnn = [32, 'relu', 1, 1, 3, 0.0, 1, 1e-4, 64, 20]
-default_hp_pretrained = [0.0003105709359650107, 1e-4, 32, 30, 0.00045649513621273853]
-# default_hp_pretrained = [2.0 * 1e-4, 1e-5, 32, 40, 5.0 * 1e-4]
+default_hp_cnn = [32, 'relu', 1, 1, 3, 0.0, 1, 1e-4, 64, 20] # for CNN
+default_hp_pretrained = [0.0003105709359650107, 1e-4, 32, 30, 0.00045649513621273853] # for pretrained model (ResNet18)
 
-# You could calculate your dataset's specific mean/std for better results.
-MEAN = [0.485, 0.456, 0.406] 
-STD = [0.229, 0.224, 0.225]
+# Preprocessing metrics for normalization
+MEAN = [0.485, 0.456, 0.406] # Mean of the dataset
+STD = [0.229, 0.224, 0.225] # Standard deviation of the dataset
 
-titles_resnet18 = ["Mode", "Learning rate", "Learning rate backbone", "Batch size", "Number of epochs", "Weight decay", "Average Accuracy", "Fluctuation" "Time"]
-titles_cnn      = ["Mode", "Neurons", "Activation", "Block 1 Size", "Block 2 Size",  "Kernel Size", "Dropout Rate", "Is Normalized", "Learning Rate", "Batch Size", "Num Epochs", "Average Accuracy", "Fluctuation", "Time"]
+# Titles for the results tables
+titles_resnet18 = ["Mode", "Learning rate", "Learning rate backbone", "Batch size", "Number of epochs", "Weight decay", "Average Accuracy", "Fluctuation" "Time"] # titles for pretrained model (ResNet18)
+titles_cnn      = ["Mode", "Neurons", "Activation", "Block 1 Size", "Block 2 Size",  "Kernel Size", "Dropout Rate", "Is Normalized", "Learning Rate", "Batch Size", "Num Epochs", "Average Accuracy", "Fluctuation", "Time"] # titles for CNN
 
+# Train transforms
 train_transforms = transforms.Compose([
     transforms.ToTensor(),             
     transforms.RandomHorizontalFlip(p=0.5), 
@@ -99,7 +103,13 @@ test_val_transforms = transforms.Compose([
     transforms.Normalize(MEAN, STD)   
 ])
 
+# Recording for result table
 cur_row = []
+
+
+'''
+CustomImageDataset class is a custom dataset class that loads the images and targets from the file paths and transforms the images. (Preprocessing steps included here)
+'''
 
 class CustomImageDataset(Dataset):
     def __init__(self, file_paths, targets, transform=None):
@@ -136,6 +146,9 @@ class CustomImageDataset(Dataset):
         target = self.targets[index]
         return image, target
 
+'''
+    Customized early stopper that is used in hyperparameters tuning
+'''
 class EarlyStopper:
     def __init__(self, patience=5, min_delta=0.0):
         self.patience = patience
@@ -161,11 +174,9 @@ class EarlyStopper:
                 return True
             return False
 
-def imshow(img):
-    npimg = img.numpy()
-    plt.imshow(np.transpose(npimg, (1, 2, 0)))
-    plt.show()
-
+'''
+Get all paths and corresponding labels for white background and field background seperately
+'''
 def get_all_paths(data_root):
     all_paths_white_bg = []
     all_labels_white_bg = []
@@ -193,7 +204,9 @@ def get_all_paths(data_root):
                 cur_labels.append(index)
     return all_paths_white_bg, all_labels_white_bg, all_paths_field_bg, all_labels_field_bg
 
-
+'''
+Split data into train, validation and test sets for white background and field background seperately
+'''
 def split_data(root_path, train_ratio=0.75, val_ratio=0.15):
     
     all_paths_white_bg, all_labels_white_bg, all_paths_field_bg, all_labels_field_bg = get_all_paths(root_path)
@@ -230,6 +243,9 @@ def split_data(root_path, train_ratio=0.75, val_ratio=0.15):
             
     return data_tr, data_val, data_t, labels_tr, labels_val, labels_t
 
+'''
+    Write results to the result table
+'''
 def write_result(row):
     path = RESULTS_RESNET18_PATH if pretrained else RESULTS_CNN_PATH
     titles = titles_resnet18 if pretrained else titles_cnn
@@ -246,6 +262,10 @@ def write_result(row):
         writer.writerow(row)
     print(f"Result {row} written to '{path}' successfully.")
 
+
+'''
+    Customized CNN
+'''
 class CNN(nn.Module):
     def __init__(self, neurons, in_channels, activation_fn_str, layers1, layers2, kernel_size_1, kernel_size_2, dropout_rate, normalization, num_classes, img_h, img_w):
         super(CNN, self).__init__()
@@ -273,12 +293,11 @@ class CNN(nn.Module):
             layers_1_list.append(nn.MaxPool2d(kernel_size=2, stride=2))
         self.block1 = nn.Sequential(*layers_1_list)
         
-        # Block 2 (Repeated Conv-Pool) - Use different kernel size if desired
+        # Block 2 (Repeated Conv-Pool): Layer size doubles every layer for this block
         layers_2_list = []
         if dropout_rate > 0:
             layers_2_list.append(nn.Dropout2d(p=dropout_rate))
 
-        # cur_channel remains the same from block1's last output
         for _ in range(layers2):
             layers_2_list.append(nn.Conv2d(cur_channel, cur_channel * 2, kernel_size=kernel_size_2, padding='same')) # Double filters for deeper layers
             layers_2_list.append(self.activation)
@@ -307,6 +326,9 @@ class CNN(nn.Module):
         x = self.fc1(x)
         return x
     
+'''
+    Create model based on the hyperparameters (CNN or pretrained model (ResNet18) based on the pretrained flag)
+'''
 def create_model(hyperparameters):
     if not pretrained:
         neurons, activation_str, layers1, layers2, kernel_size, dropout_rate, normalization, lr, batch_size, num_epochs = hyperparameters
@@ -338,7 +360,9 @@ def create_model(hyperparameters):
             param.requires_grad = True
     return model
 
-# --- train_and_evaluate (Kept the same) ---
+'''
+    Train and evaluate the model used in objective function for Bayesian Optimization
+'''
 def train_and_evaluate(hyperparameters, train_loader, val_loader, device):
     if not pretrained:
         neurons, activation_str, layers1, layers2, kernel_size, dropout_rate, normalization, lr, batch_size, num_epochs = hyperparameters
@@ -359,8 +383,12 @@ def train_and_evaluate(hyperparameters, train_loader, val_loader, device):
     model = create_model(hyperparameters)
     print(model)
 
+    # Loss function
     criterion = nn.CrossEntropyLoss()
+
+    # Optimizer
     if pretrained:
+        # If ResNet model is used, customize the optimizer for fine-tuning model with smaller learning rate in backbone layers
         optimizer = optim.Adam([
             {'params': model.fc.parameters(), 'lr': lr, 'weight_decay': 1e-4}, # High L.R. for the new layer
             {'params': model.layer4.parameters(), 'lr': lr_backbone, 'weight_decay': weight_decay}, # Low L.R. for fine-tuning
@@ -420,7 +448,9 @@ def train_and_evaluate(hyperparameters, train_loader, val_loader, device):
     
     return -best_val_accuracy
 
-# --- cnn_objective (Updated to use new transforms) ---
+'''
+    Objective function for Bayesian Optimization
+'''
 def cnn_objective(hyperparameters):
     if not pretrained:
         neurons, activation_str, layers1, layers2, kernel_size, dropout_rate, normalization, lr, batch_size, num_epochs = hyperparameters
@@ -445,6 +475,7 @@ def cnn_objective(hyperparameters):
     # set up for training
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
+    # The model running on GPU by default but automatically switches to "CPU" if GPU is not available
     try:
         if device == "cuda":
             return train_and_evaluate(hyperparameters, train_loader, val_loader, device)
@@ -464,6 +495,9 @@ def cnn_objective(hyperparameters):
         return train_and_evaluate(hyperparameters, train_loader, val_loader, device)
 
 
+'''
+    Final test run for the model with the best hyperparameters and predefined seed
+'''
 def final_test_run(hyperparameters, seed):
 
     if not pretrained:
@@ -485,11 +519,11 @@ def final_test_run(hyperparameters, seed):
     # Append Hyperparameters to result for potential result write
     cur_row.extend(hyperparameters)
     
-    # 1. Setup Seeds and Hyperparameters
+    # Setup Seeds and Hyperparameters
     np.random.seed(seed)
     torch.manual_seed(seed)
     
-    # 2. Data Split (New split for each run)
+    # Data Split (New split for each run)
     data_tr, data_val, data_t, labels_tr, labels_val, labels_t = split_data(
         data_root, train_ratio=0.7, val_ratio=0.15 
     )
@@ -503,8 +537,10 @@ def final_test_run(hyperparameters, seed):
     train_loader = DataLoader(CustomImageDataset(data_tr_final, labels_tr_final, transform=train_transforms), batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(CustomImageDataset(data_t, labels_t, transform=test_val_transforms), batch_size=batch_size, shuffle=False)
     
-    # 3. Model Setup (Kept the same)
+    # Model Setup
     device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    # Try to initialize the model on GPU, if not available, switch to CPU automatically
     try:
         if device == "cuda":
             model = model.to(device)
@@ -533,7 +569,7 @@ def final_test_run(hyperparameters, seed):
             {'params': model.layer3.parameters(), 'lr': lr_backbone, 'weight_decay': weight_decay}, # Low L.R. for fine-tuning
         ], lr=lr_backbone) # Default L.R. for any other parameters (will be ignored if frozen)
     else:
-        # Use the single L.R. from the optimization space for custom CNN
+        # Use the single L.R. from the optimization space for custom CNN (no fine-tuning)
         optimizer = optim.Adam(model.parameters(), lr=lr)
     
     for epoch in range(num_epochs):
@@ -570,6 +606,9 @@ def final_test_run(hyperparameters, seed):
         rec_metric.compute().item()
     )
 
+'''
+    Return the best hyperparameters for the model if saved, otherwise run Bayesian Optimization to find the best hyperparameters
+'''
 def baye():
     best_hps = default_hp_cnn if not pretrained else default_hp_pretrained
     if not default:
@@ -595,7 +634,9 @@ def baye():
     print(f"Model{'ResNet18' if pretrained else 'CNN'} with {'default' if default else 'optimized'} hyperparameters")  
     print(f"Hyperparameters: {dict(zip([s.name for s in space], best_hps))}")
 
-
+'''
+    Run the model with the best hyperparameters for 5 time with diffrent seeds and record the results as median of the 5 runs
+'''
 def train():
     best_hps = default_hp_cnn if not pretrained else default_hp_pretrained
     cur_row= []
@@ -661,8 +702,17 @@ def train():
     if record_results: 
         write_result(cur_row)
 
-print("test")
+'''
+    Main function to run the program with command line arguments
+    Availabe arguments:
+    --no-pretrained: Disable the pretrained model (using custom CNN)
+    --default: Enable default settings (This is the best hyperparameters for each model that I have ran Bayesian Optimization for and fixed into)
+    --baye: Just print out the best hyperparameters (saved or run bayesian optimization for new hyperparameters)
+    --manual: Set the number of epochs manually
+    --no-record: Disable recording (By default, the results are recorded in the result table on the root directory)
 
+    Use command "python3 main --default" to run the program with default settings. 
+'''
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
