@@ -51,7 +51,7 @@ pretrained = True
 default = False
 mode = 0 # Assume 0 is mixed background, 1 is white background and 2 is field background
 record_results = True
-split_mode = 0
+# split_mode = 0
 
 # Hyperparameter space for CNN
 space = [
@@ -84,8 +84,8 @@ MEAN = [0.485, 0.456, 0.406] # Mean of the dataset
 STD = [0.229, 0.224, 0.225] # Standard deviation of the dataset
 
 # Titles for the results tables
-titles_resnet18 = ["Mode", "Learning rate", "Learning rate backbone", "Batch size", "Number of epochs", "Weight decay", "Average Accuracy", "Fluctuation" "Time"] # titles for pretrained model (ResNet18)
-titles_cnn      = ["Mode", "Neurons", "Activation", "Block 1 Size", "Block 2 Size",  "Kernel Size", "Dropout Rate", "Is Normalized", "Learning Rate", "Batch Size", "Num Epochs", "Average Accuracy", "Fluctuation", "Time"] # titles for CNN
+titles_resnet18 = ["Mode", "Learning rate", "Learning rate backbone", "Batch size", "Number of epochs", "Weight decay", "Average Accuracy in Total", "Fluctuation in Total", "Average Accuracy in White Background", "Fluctuation in White Background", "Average Accuracy in Field Background", "Fluctuation in Field Background", "Time"] # titles for pretrained model (ResNet18)
+titles_cnn      = ["Mode", "Neurons", "Activation", "Block 1 Size", "Block 2 Size",  "Kernel Size", "Dropout Rate", "Is Normalized", "Learning Rate", "Batch Size", "Num Epochs", "Average Accuracy in Total", "Fluctuation in Total", "Average Accuracy in White Background", "Fluctuation in White Background", "Average Accuracy in Field Background", "Fluctuation in Field Background", "Time"] # titles for CNN
 
 # Train transforms
 train_transforms = transforms.Compose([
@@ -132,10 +132,6 @@ class CustomImageDataset(Dataset):
         image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
 
         img_h, img_w, _ = image.shape
-        
-        # Rotation logic
-        if img_h > img_w:
-            image = cv.rotate(image, cv.ROTATE_90_CLOCKWISE)
 
         if image.shape[0] != IMG_HEIGHT or image.shape[1] != IMG_WIDTH:
             image = cv.resize(image, (IMG_WIDTH, IMG_HEIGHT), interpolation=cv.INTER_AREA)
@@ -213,7 +209,7 @@ def split_data(root_path, train_ratio=0.75, val_ratio=0.15):
     print(f"get {len(all_paths_white_bg)} paths and {len(all_labels_white_bg)} labels for white background")
     print(f"get {len(all_paths_field_bg)} paths and {len(all_labels_field_bg)} labels for field background")
 
-    data_tr, data_val, data_t, labels_tr, labels_val, labels_t = [], [], [], [], [], []
+    data_tr, data_val, data_t_white_bg, data_t_field_bg, labels_tr, labels_val, labels_t_white_bg, labels_t_field_bg = [], [], [], [], [], [], [], []
 
     indices_white_bg = np.arange(len(all_paths_white_bg))
     indices_field_bg = np.arange(len(all_paths_field_bg))
@@ -228,8 +224,8 @@ def split_data(root_path, train_ratio=0.75, val_ratio=0.15):
             data_val.append(all_paths_white_bg[indices_white_bg[i]])
             labels_val.append(all_labels_white_bg[indices_white_bg[i]])
         else:
-            data_t.append(all_paths_white_bg[indices_white_bg[i]])
-            labels_t.append(all_labels_white_bg[indices_white_bg[i]])
+            data_t_white_bg.append(all_paths_white_bg[indices_white_bg[i]])
+            labels_t_white_bg.append(all_labels_white_bg[indices_white_bg[i]])
     for i in range(len(indices_field_bg)):
         if i < int(len(indices_field_bg) * train_ratio):
             data_tr.append(all_paths_field_bg[indices_field_bg[i]])
@@ -238,10 +234,11 @@ def split_data(root_path, train_ratio=0.75, val_ratio=0.15):
             data_val.append(all_paths_field_bg[indices_field_bg[i]])
             labels_val.append(all_labels_field_bg[indices_field_bg[i]])
         else:
-            data_t.append(all_paths_field_bg[indices_field_bg[i]])
+            data_t_field_bg.append(all_paths_field_bg[indices_field_bg[i]])
+            labels_t_field_bg.append(all_labels_field_bg[indices_field_bg[i]])
 
             
-    return data_tr, data_val, data_t, labels_tr, labels_val, labels_t
+    return data_tr, data_val, data_t_white_bg, data_t_field_bg, labels_tr, labels_val, labels_t_white_bg, labels_t_field_bg
 
 '''
     Write results to the result table
@@ -265,6 +262,11 @@ def write_result(row):
 
 '''
     Customized CNN
+    By default, this model is not in used. If you want to switch into using this model instead, command:
+    "python3 main --no-pretrained --default" to run the program with default settings.
+
+    Structure:
+    Initial Block -> Block 1 -> Block 2 -> Fully Connected Layer
 '''
 class CNN(nn.Module):
     def __init__(self, neurons, in_channels, activation_fn_str, layers1, layers2, kernel_size_1, kernel_size_2, dropout_rate, normalization, num_classes, img_h, img_w):
@@ -467,7 +469,7 @@ def cnn_objective(hyperparameters):
 
     np.random.seed(42)
 
-    data_tr, data_val, _, labels_tr, labels_val, _ = split_data(data_root, train_ratio=0.7, val_ratio=0.15)
+    data_tr, data_val, data_t_white_bg, _, _, labels_val, _, _ = split_data(data_root, train_ratio=0.7, val_ratio=0.15)
 
     train_loader = DataLoader(CustomImageDataset(data_tr, labels_tr, transform=train_transforms), batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(CustomImageDataset(data_val, labels_val, transform=test_val_transforms), batch_size=batch_size, shuffle=False)
@@ -493,6 +495,31 @@ def cnn_objective(hyperparameters):
             torch.cuda.empty_cache() 
         
         return train_and_evaluate(hyperparameters, train_loader, val_loader, device)
+
+def evaluate_model(test_data, test_labels, model, device, batch_size):
+
+    acc_metric = Accuracy(task="multiclass", num_classes=num_classes).to(device)
+    prec_metric = Precision(task="multiclass", num_classes=num_classes, average='macro').to(device)
+    rec_metric = Recall(task="multiclass", num_classes=num_classes, average='macro').to(device)
+
+    test_loader = DataLoader(CustomImageDataset(test_data, test_labels, transform=test_val_transforms), batch_size=batch_size, shuffle=False)
+
+    model.eval()
+    with torch.no_grad():
+        for images, labels in test_loader:
+            images = images.to(device)
+            labels = labels.to(device)
+            outputs = model(images)
+            _, preds = torch.max(outputs, 1)
+            
+            acc_metric.update(preds, labels)
+            prec_metric.update(preds, labels)
+            rec_metric.update(preds, labels)
+    return (
+        acc_metric.compute().item(),
+        prec_metric.compute().item(),
+        rec_metric.compute().item()
+    )
 
 
 '''
@@ -524,9 +551,12 @@ def final_test_run(hyperparameters, seed):
     torch.manual_seed(seed)
     
     # Data Split (New split for each run)
-    data_tr, data_val, data_t, labels_tr, labels_val, labels_t = split_data(
+    data_tr, data_val, data_t_white_bg, data_t_field_bg, labels_tr, labels_val, labels_t_white_bg, labels_t_field_bg = split_data(
         data_root, train_ratio=0.7, val_ratio=0.15 
     )
+    
+    data_t_total = data_t_white_bg + data_t_field_bg
+    labels_t_total = labels_t_white_bg + labels_t_field_bg
 
     # Combine Train and Val for the final, full training set
     data_tr_final = data_tr + data_val
@@ -535,7 +565,7 @@ def final_test_run(hyperparameters, seed):
     print(f"lerning rate {lr}, batch size {batch_size}, number of epochs {num_epochs}")
 
     train_loader = DataLoader(CustomImageDataset(data_tr_final, labels_tr_final, transform=train_transforms), batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(CustomImageDataset(data_t, labels_t, transform=test_val_transforms), batch_size=batch_size, shuffle=False)
+    # test_loader = DataLoader(CustomImageDataset(data_t, labels_t, transform=test_val_transforms), batch_size=batch_size, shuffle=False)
     
     # Model Setup
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -585,26 +615,11 @@ def final_test_run(hyperparameters, seed):
             
         print(f"Epoch {epoch+1}: Training loss {loss.item()}")
 
-    acc_metric = Accuracy(task="multiclass", num_classes=num_classes).to(device)
-    prec_metric = Precision(task="multiclass", num_classes=num_classes, average='macro').to(device)
-    rec_metric = Recall(task="multiclass", num_classes=num_classes, average='macro').to(device)
+    result_total = evaluate_model(data_t_total, labels_t_total, model, device, batch_size)
+    result_white_bg = evaluate_model(data_t_white_bg, labels_t_white_bg, model, device, batch_size)
+    result_field_bg = evaluate_model(data_t_field_bg, labels_t_field_bg, model, device, batch_size)
+    return (result_total, result_white_bg, result_field_bg)
 
-    model.eval()
-    with torch.no_grad():
-        for images, labels in test_loader:
-            images = images.to(device)
-            labels = labels.to(device)
-            outputs = model(images)
-            _, preds = torch.max(outputs, 1)
-            
-            acc_metric.update(preds, labels)
-            prec_metric.update(preds, labels)
-            rec_metric.update(preds, labels)
-    return (
-        acc_metric.compute().item(),
-        prec_metric.compute().item(),
-        rec_metric.compute().item()
-    )
 
 '''
     Return the best hyperparameters for the model if saved, otherwise run Bayesian Optimization to find the best hyperparameters
@@ -664,7 +679,6 @@ def train():
 
     print("Bayesian Optimization Complete.")
     print(f"Best Hyperparameters: {dict(zip([s.name for s in space], best_hps))}")
-
     print(f"Running model {'ResNet18' if pretrained else 'CNN'} with {'default' if default else 'optimized'} hyperparameters")
 
     seeds = [100, 200, 300, 400, 500]
@@ -674,31 +688,71 @@ def train():
     # Execute 5 runs
     for i, seed in enumerate(seeds):
         print(f"--- Running Test {i+1}/5 with seed {seed} ---")
-        acc, prec, rec = final_test_run(hyperparameters=best_hps, seed=seed)
-        results.append((acc, prec, rec))
-        print(f"Results: Acc={acc:.4f}, Prec={prec:.4f}, Rec={rec:.4f}")
+        result_total, result_white_bg, result_field_bg = final_test_run(hyperparameters=best_hps, seed=seed)
+        results.append((result_total, result_white_bg, result_field_bg))
+        print(f"Results: Acc={result_total[0]:.4f}, Prec={result_total[1]:.4f}, Rec={result_total[2]:.4f}")
+        print(f"Results in white background: Acc={result_white_bg[0]:.4f}, Prec={result_white_bg[1]:.4f}, Rec={result_white_bg[2]:.4f}")
+        print(f"Results in field background: Acc={result_field_bg[0]:.4f}, Prec={result_field_bg[1]:.4f}, Rec={result_field_bg[2]:.4f}")
 
     # Calculate Average and Standard Deviation
     results_array = np.array(results)
 
-    avg_acc = np.mean(results_array[:, 0])
-    std_acc = np.std(results_array[:, 0])
-    avg_prec = np.mean(results_array[:, 1])
-    std_prec = np.std(results_array[:, 1])
-    avg_rec = np.mean(results_array[:, 2])
-    std_rec = np.std(results_array[:, 2])
+    avg_acc_total = np.mean(results_array[:, 0, 0])
+    std_acc_total = np.std(results_array[:, 0, 0])
+    avg_prec_total = np.mean(results_array[:, 0, 1])
+    std_prec_total = np.std(results_array[:, 0, 1])
+    avg_rec_total = np.mean(results_array[:, 0, 2])
+    std_rec_total = np.std(results_array[:, 0, 2])
 
-    cur_row.append("%.4f" % avg_acc)
-    cur_row.append("%.4f" % std_acc)
+    avg_acc_white_bg = np.mean(results_array[:, 1, 0])
+    std_acc_white_bg = np.std(results_array[:, 1, 0])
+    avg_prec_white_bg = np.mean(results_array[:, 1, 1])
+    std_prec_white_bg = np.std(results_array[:, 1, 1])
+    avg_rec_white_bg = np.mean(results_array[:, 1, 2])
+    std_rec_white_bg = np.std(results_array[:, 1, 2])
+
+    avg_acc_field_bg = np.mean(results_array[:, 2, 0])
+    std_acc_field_bg = np.std(results_array[:, 2, 0])
+    avg_prec_field_bg = np.mean(results_array[:, 2, 1])
+    std_prec_field_bg = np.std(results_array[:, 2, 1])
+    avg_rec_field_bg = np.mean(results_array[:, 2, 2])
+    std_rec_field_bg = np.std(results_array[:, 2, 2])
+
+
+    cur_row.append("%.4f" % avg_acc_total)
+    cur_row.append("%.4f" % std_acc_total)
+    cur_row.append("%.4f" % avg_prec_total)
+    cur_row.append("%.4f" % std_prec_total)
+    cur_row.append("%.4f" % avg_rec_total)
+    cur_row.append("%.4f" % std_rec_total)
+    cur_row.append("%.4f" % avg_acc_white_bg)
+    cur_row.append("%.4f" % std_acc_white_bg)
+    cur_row.append("%.4f" % avg_prec_white_bg)
+    cur_row.append("%.4f" % std_prec_white_bg)
+    cur_row.append("%.4f" % avg_rec_white_bg)
+    cur_row.append("%.4f" % std_rec_white_bg)
+    cur_row.append("%.4f" % avg_acc_field_bg)
+    cur_row.append("%.4f" % std_acc_field_bg)
+    cur_row.append("%.4f" % avg_prec_field_bg)
+    cur_row.append("%.4f" % std_prec_field_bg)
+    cur_row.append("%.4f" % avg_rec_field_bg)
+    cur_row.append("%.4f" % std_rec_field_bg)
 
     print("\n" + "=" * 50)
     print("SECTION 6.1: FINAL EXPERIMENTAL RESULTS (AVERAGE OVER 5 RUNS)")
     print("=" * 50)
-    print(f"Test Accuracy: {avg_acc:.4f} \u00B1 {std_acc:.4f}")
-    print(f"Macro Precision: {avg_prec:.4f} \u00B1 {std_prec:.4f}")
-    print(f"Macro Recall: {avg_rec:.4f} \u00B1 {std_rec:.4f}")
+    print(f"Test Accuracy in total: {avg_acc_total:.4f} \u00B1 {std_acc_total:.4f}")
+    print(f"Macro Precision in total: {avg_prec_total:.4f} \u00B1 {std_prec_total:.4f}")
+    print(f"Macro Recall in total: {avg_rec_total:.4f} \u00B1 {std_rec_total:.4f}")
+    print(f"Test Accuracy in white background: {avg_acc_white_bg:.4f} \u00B1 {std_acc_white_bg:.4f}")
+    print(f"Macro Precision in white background: {avg_prec_white_bg:.4f} \u00B1 {std_prec_white_bg:.4f}")
+    print(f"Macro Recall in white background: {avg_rec_white_bg:.4f} \u00B1 {std_rec_white_bg:.4f}")
+    print(f"Test Accuracy in field background: {avg_acc_field_bg:.4f} \u00B1 {std_acc_field_bg:.4f}")
+    print(f"Macro Precision in field background: {avg_prec_field_bg:.4f} \u00B1 {std_prec_field_bg:.4f}")
+    print(f"Macro Recall in field background: {avg_rec_field_bg:.4f} \u00B1 {std_rec_field_bg:.4f}")
     print("=" * 50)
 
+    cur_row.append(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     if record_results: 
         write_result(cur_row)
 
@@ -739,7 +793,7 @@ if __name__ == "__main__":
     
     if not pretrained:
         print("Setting global 'pretrained' to False.")
-  
+
         pass
 
     if default:
