@@ -5,6 +5,7 @@ import csv
 
 import os
 import argparse
+import datetime
 
 import torch
 import torchvision.models as models
@@ -77,7 +78,7 @@ space_pretrained =[
 ]
 
 default_hp_cnn = [32, 'relu', 1, 1, 3, 0.0, 1, 1e-4, 64, 20] # for CNN
-default_hp_pretrained = [0.0003105709359650107, 1e-4, 32, 30, 0.00045649513621273853] # for pretrained model (ResNet18)
+default_hp_pretrained = [0.0003105709359650107, 1e-4, 32, 35, 0.00045649513621273853] # for pretrained model (ResNet18)
 
 # Preprocessing metrics for normalization
 MEAN = [0.485, 0.456, 0.406] # Mean of the dataset
@@ -171,7 +172,7 @@ class EarlyStopper:
             return False
 
 '''
-Get all paths and corresponding labels for white background and field background seperately
+    Get all paths and corresponding labels for white background and field background seperately
 '''
 def get_all_paths(data_root):
     all_paths_white_bg = []
@@ -201,7 +202,7 @@ def get_all_paths(data_root):
     return all_paths_white_bg, all_labels_white_bg, all_paths_field_bg, all_labels_field_bg
 
 '''
-Split data into train, validation and test sets for white background and field background seperately
+    Split data into train, validation and test sets for white background and field background seperately
 '''
 def split_data(root_path, train_ratio=0.75, val_ratio=0.15):
     
