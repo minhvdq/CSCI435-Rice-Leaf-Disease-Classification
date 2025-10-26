@@ -28,9 +28,7 @@ import skopt
 from skopt.space import Real, Integer, Categorical
 from skopt import gp_minimize
 
-# --- Global Constants (Kept the same) ---
 num_classes = 5
-batch_size = 60 # Note: This is overridden by the BO process
 
 labels = ['Brown Spot', 'Leaf Scaled', 'Rice Blast', 'Rice Turgor', 'Sheath Blight']
 
@@ -51,7 +49,7 @@ RESULTS_CNN_PATH = 'results_cnn.csv'
 pretrained = True
 default = False
 mode = 0 # Assume 0 is mixed background, 1 is white background and 2 is field background
-record_results = True
+record_results = False
 # split_mode = 0
 
 # Hyperparameter space for CNN
@@ -776,14 +774,12 @@ if __name__ == "__main__":
     parser.add_argument('--default', action='store_true', help='Enable default settings.')
     parser.add_argument('--baye', action='store_true', help='Run Bayesian Optimization.')
     
-    parser.add_argument('--manual', type=int, default=20)
-
-    parser.add_argument('--no-record', action='store_true', help='Enable recording')
+    parser.add_argument('--record', action='store_true', help='Enable recording')
     
     args = parser.parse_args()
 
     pretrained = not args.no_pretrained
-    record_results = not args.no_record
+    record_results = args.record
 
     default = args.default
     
@@ -800,11 +796,6 @@ if __name__ == "__main__":
     if default:
         print("Enabling default settings.")
         pass
-
-    if args.manual != 20:
-        print(f"Applying manual value: {args.manual}")
-        default_hp_cnn[9] = args.manual
-        default_hp_pretrained[2] = args.manual
     
     if args.baye:
         baye()
