@@ -645,8 +645,9 @@ def baye():
             skopt.dump(res_gp, save_path)
             print(f"Optimization results saved to {save_path}")
         best_hps = res_gp.x   
+    sp = space_pretrained if pretrained else space
     print(f"Model{'ResNet18' if pretrained else 'CNN'} with {'default' if default else 'optimized'} hyperparameters")  
-    print(f"Hyperparameters: {dict(zip([s.name for s in space], best_hps))}")
+    print(f"Hyperparameters: {dict(zip([s.name for s in sp], best_hps))}")
 
 '''
     Run the model with the best hyperparameters for 5 time with diffrent seeds and record the results as median of the 5 runs
